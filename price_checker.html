@@ -859,11 +859,29 @@ async function fetchAndExtract(product, url, debug){
 /* ============ MANUAL MODE ============ */
 async function checkSiteRow(product, site){
   const debug = {};
-  const result = await fetchAndExtract(product, site.url, debug);
-  if(result.ok){
-    return Object.assign({ id: site.id, siteName: site.name, url: site.url, source: 'manual', status: 'ok', debug }, result.extracted);
+  let targetUrl = site.url;
+
+  // dacă URL-ul salvat e doar domeniul (nu o pagină de produs), încearcă să găsească
+  // singur pagina exactă via Serper înainte de verificare, dacă avem cheia disponibilă
+  if(isLikelyHomepage(targetUrl) && state.data.config.serperKey){
+    try{
+      const resolved = await findProductUrlOnDomain(product, hostnameOf(targetUrl));
+      debug.autoResolvedFrom = targetUrl;
+      debug.autoResolvedTo = resolved;
+      targetUrl = resolved;
+      site.url = resolved;
+      saveData();
+      renderSiteList(product);
+    }catch(e){
+      debug.autoResolveError = e.message;
+    }
   }
-  return { id: site.id, siteName: site.name, url: site.url, source: 'manual', status: 'error', errorMsg: result.errorMsg, debug };
+
+  const result = await fetchAndExtract(product, targetUrl, debug);
+  if(result.ok){
+    return Object.assign({ id: site.id, siteName: site.name, url: targetUrl, source: 'manual', status: 'ok', debug }, result.extracted);
+  }
+  return { id: site.id, siteName: site.name, url: targetUrl, source: 'manual', status: 'error', errorMsg: result.errorMsg, debug };
 }
 
 async function runManualCheck(productId){
@@ -917,6 +935,35 @@ async function refreshSingleSite(productId, siteId){
   saveHistoryEntry(productId);
 }
 
+// Domeniu "gol" (ex. https://altex.ro/ sau https://www.emag.ro) fără cale — user a dat
+// site-ul, nu pagina de produs. Verificarea normală nu va găsi niciodată un preț aici.
+function isLikelyHomepage(url){
+  try{
+    const u = new URL(url);
+    return u.pathname.replace(/\/+$/, '') === '' && !u.search;
+  }catch(e){ return false; }
+}
+
+async function findProductUrlOnDomain(product, domain){
+  const query = `site:${domain} ${product.name}`;
+  const serperData = await callSerper(query);
+  const organic = (serperData.organic || []).slice(0, 8).map(r => ({ titlu: r.title, link: r.link, fragment: r.snippet }));
+  if(!organic.length) throw new Error(`Nicio pagină găsită pe ${domain} pentru "${product.name}".`);
+
+  const listText = organic.map((r, i) => `${i+1}. ${r.titlu}\nURL: ${r.link}\nFragment: ${r.fragment || ''}`).join('\n\n');
+  const systemPrompt = 'Ești un asistent care alege, dintr-o listă de rezultate de căutare restricționate la un singur magazin online, link-ul care duce EXACT la pagina de produs (nu categorie, nu listă de rezultate, nu blog). ' +
+    'Răspunde STRICT cu JSON, fără alt text: {"url": string} — link-ul ales, copiat exact din listă.';
+  const userPrompt = `Produs căutat: "${product.name}"\n\nRezultate de pe ${domain}:\n${listText}`;
+  const data = await callLLM([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ], { maxTokens: 200 });
+  const content = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : '';
+  const parsed = parseJsonLoose(content);
+  if(!parsed.url || !isValidUrl(parsed.url)) throw new Error(`Modelul nu a găsit un link valid de produs pe ${domain}.`);
+  return parsed.url;
+}
+
 async function resolveSiteUrl(productId, siteId){
   const product = getProduct(productId);
   const site = product.sites.find(s => s.id === siteId);
@@ -937,24 +984,7 @@ async function resolveSiteUrl(productId, siteId){
   setRow({ id: siteId, siteName: site.name, url: site.url, source: 'manual', status: 'loading' });
 
   try{
-    const query = `site:${domain} ${product.name}`;
-    const serperData = await callSerper(query);
-    const organic = (serperData.organic || []).slice(0, 8).map(r => ({ titlu: r.title, link: r.link, fragment: r.snippet }));
-    if(!organic.length) throw new Error(`Nicio pagină găsită pe ${domain} pentru "${product.name}".`);
-
-    const listText = organic.map((r, i) => `${i+1}. ${r.titlu}\nURL: ${r.link}\nFragment: ${r.fragment || ''}`).join('\n\n');
-    const systemPrompt = 'Ești un asistent care alege, dintr-o listă de rezultate de căutare restricționate la un singur magazin online, link-ul care duce EXACT la pagina de produs (nu categorie, nu listă de rezultate, nu blog). ' +
-      'Răspunde STRICT cu JSON, fără alt text: {"url": string} — link-ul ales, copiat exact din listă.';
-    const userPrompt = `Produs căutat: "${product.name}"\n\nRezultate de pe ${domain}:\n${listText}`;
-    const data = await callLLM([
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ], { maxTokens: 200 });
-    const content = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : '';
-    const parsed = parseJsonLoose(content);
-    if(!parsed.url || !isValidUrl(parsed.url)) throw new Error(`Modelul nu a găsit un link valid de produs pe ${domain}.`);
-
-    site.url = parsed.url;
+    site.url = await findProductUrlOnDomain(product, domain);
     saveData();
     renderSiteList(product);
   }catch(e){
@@ -1219,6 +1249,8 @@ function renderResultsTable(product){
   function renderDebugRow(r, key){
     const d = r.debug || {};
     const lines = [];
+    if(d.autoResolvedFrom) lines.push(`Link rezolvat automat: "${d.autoResolvedFrom}" (doar domeniu) → "${d.autoResolvedTo}"`);
+    if(d.autoResolveError) lines.push(`Nu s-a putut rezolva automat domeniul: ${d.autoResolveError}`);
     if(d.proxy) lines.push(`Proxy folosit: ${d.proxy}`);
     if(d.rawLen != null) lines.push(`Lungime conținut brut preluat: ${d.rawLen} caractere`);
     if(d.strippedLen != null) lines.push(`Lungime după eliminare linii de navigare: ${d.strippedLen} caractere`);
