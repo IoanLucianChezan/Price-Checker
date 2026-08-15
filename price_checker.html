@@ -609,7 +609,7 @@ function cleanHtml(rawHtml){
 }
 
 /* ============ CEREBRAS / SERPER API ============ */
-async function callChatCompletion(endpoint, apiKey, model, messages, opts){
+async function callChatCompletion(endpoint, apiKey, model, messages, opts, isRetry){
   const body = {
     model,
     messages,
@@ -624,6 +624,12 @@ async function callChatCompletion(endpoint, apiKey, model, messages, opts){
   });
   if(!resp.ok){
     const errText = await resp.text().catch(() => '');
+    if(resp.status === 429 && !isRetry){
+      const match = errText.match(/try again in ([\d.]+)s/i);
+      const waitMs = Math.min((match ? Math.ceil(parseFloat(match[1]) * 1000) : 3000) + 300, 15000);
+      await new Promise(r => setTimeout(r, waitMs));
+      return callChatCompletion(endpoint, apiKey, model, messages, opts, true);
+    }
     const err = new Error(`API a răspuns cu ${resp.status}: ${errText.slice(0,300)}`);
     err.status = resp.status;
     throw err;
@@ -908,7 +914,9 @@ async function processChosenLinks(product, links){
   state.autoResults[product.id] = rows;
   renderResultsTable(product);
 
-  await Promise.allSettled(rows.map(async (row) => {
+  // secvențial (nu în paralel) — modelele AI au limită de tokens/minut, iar mai multe
+  // extrageri simultane pe conținut mare de pagină o depășesc rapid (429 rate limit)
+  for(const row of rows){
     let raw, cleaned;
     try{
       raw = await fetchViaProxy(row.url);
@@ -917,7 +925,7 @@ async function processChosenLinks(product, links){
       row.status = 'error';
       row.errorMsg = 'Preluare pagină: ' + e.message;
       renderResultsTable(product);
-      return;
+      continue;
     }
     try{
       const extracted = await extractPriceFromContent(product.name, cleaned);
@@ -927,7 +935,7 @@ async function processChosenLinks(product, links){
       row.errorMsg = 'Extragere AI: ' + e.message;
     }
     renderResultsTable(product);
-  }));
+  }
   saveHistoryEntry(product.id);
 }
 
