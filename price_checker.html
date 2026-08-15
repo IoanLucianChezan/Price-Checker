@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Price Checker — CBM Office Team</title>
+<style>
+  :root{
+    --bg:#f4f6f9;
+    --panel:#ffffff;
+    --panel-alt:#f9fafb;
+    --border:#e2e6ec;
+    --text:#1e2430;
+    --text-dim:#657084;
+    --primary:#2f5fe0;
+    --primary-dark:#2347b8;
+    --primary-light:#e8edfd;
+    --success:#1a9e6b;
+    --success-bg:#e5f7ef;
+    --danger:#d93b3b;
+    --danger-bg:#fbeaea;
+    --warn:#b5790a;
+    --warn-bg:#fdf2df;
+    --radius:10px;
+    --shadow:0 1px 3px rgba(20,25,40,.08), 0 1px 2px rgba(20,25,40,.05);
+    font-size:15px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+  }
+  a{color:var(--primary);}
+  header.app-header{
+    display:flex;align-items:center;justify-content:space-between;
+    background:var(--panel);
+    border-bottom:1px solid var(--border);
+    padding:10px 20px;
+    position:sticky;top:0;z-index:50;
+    gap:12px;flex-wrap:wrap;
+  }
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand-badge{
+    width:38px;height:38px;border-radius:8px;
+    background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+    color:#fff;display:flex;align-items:center;justify-content:center;
+    font-weight:700;font-size:12px;letter-spacing:.5px;
+    box-shadow:var(--shadow);
+    flex-shrink:0;
+  }
+  .brand-text{line-height:1.15;}
+  .brand-text .company{font-size:12px;font-weight:600;color:var(--text-dim);letter-spacing:.3px;text-transform:uppercase;}
+  .brand-text .appname{font-size:17px;font-weight:700;color:var(--text);}
+  .header-actions{display:flex;gap:8px;align-items:center;}
+  button{
+    font-family:inherit;font-size:14px;cursor:pointer;
+    border-radius:8px;border:1px solid var(--border);
+    background:var(--panel);color:var(--text);
+    padding:8px 14px;transition:.15s;
+  }
+  button:hover{background:var(--panel-alt);}
+  button.primary{background:var(--primary);border-color:var(--primary);color:#fff;}
+  button.primary:hover{background:var(--primary-dark);}
+  button.danger{color:var(--danger);border-color:var(--danger-bg);}
+  button.danger:hover{background:var(--danger-bg);}
+  button.ghost{border-color:transparent;background:transparent;}
+  button.ghost:hover{background:var(--panel-alt);}
+  button.small{padding:4px 9px;font-size:12.5px;border-radius:6px;}
+  button:disabled{opacity:.5;cursor:not-allowed;}
+  input,select,textarea{
+    font-family:inherit;font-size:14px;
+    border:1px solid var(--border);border-radius:8px;
+    padding:8px 10px;background:#fff;color:var(--text);width:100%;
+  }
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--primary-light);border-color:var(--primary);}
+  label{font-size:12.5px;font-weight:600;color:var(--text-dim);display:block;margin-bottom:4px;}
+  .field{margin-bottom:12px;}
+  .layout{display:flex;gap:18px;padding:18px;max-width:1400px;margin:0 auto;align-items:flex-start;}
+  .sidebar{
+    width:290px;flex-shrink:0;background:var(--panel);
+    border:1px solid var(--border);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:14px;
+  }
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;gap:16px;}
+  .sidebar h2{font-size:13px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-dim);margin:2px 0 10px;}
+  .product-item{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:9px 10px;border-radius:8px;cursor:pointer;margin-bottom:4px;
+    border:1px solid transparent;
+  }
+  .product-item:hover{background:var(--panel-alt);}
+  .product-item.active{background:var(--primary-light);border-color:var(--primary);}
+  .product-item .pname{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .product-item .psku{font-size:11.5px;color:var(--text-dim);}
+  .product-item .prow-actions{display:flex;gap:2px;opacity:0;transition:.15s;}
+  .product-item:hover .prow-actions{opacity:1;}
+  .empty-state{color:var(--text-dim);font-size:13.5px;padding:14px 4px;text-align:center;}
+  .card{
+    background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:16px 18px;
+  }
+  .card-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
+  .card-header h2{font-size:16px;margin:0;}
+  .card-header h3{font-size:14px;margin:0;color:var(--text-dim);font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
+  .muted{color:var(--text-dim);font-size:13px;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle;}
+  th{font-size:11.5px;text-transform:uppercase;color:var(--text-dim);letter-spacing:.3px;font-weight:700;}
+  tr.best-price{background:var(--success-bg);}
+  tr.row-error{background:var(--danger-bg);}
+  .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.2px;}
+  .badge.manual{background:#eef1f7;color:#44506b;}
+  .badge.automat{background:#eae6fb;color:#5b3fc4;}
+  .badge.ok{background:var(--success-bg);color:var(--success);}
+  .badge.error{background:var(--danger-bg);color:var(--danger);}
+  .badge.loading{background:var(--warn-bg);color:var(--warn);}
+  .badge.conf-mare{background:var(--success-bg);color:var(--success);}
+  .badge.conf-medie{background:var(--warn-bg);color:var(--warn);}
+  .badge.conf-mica{background:var(--danger-bg);color:var(--danger);}
+  .spinner{
+    width:13px;height:13px;border:2px solid var(--warn-bg);border-top-color:var(--warn);
+    border-radius:50%;display:inline-block;animation:spin .7s linear infinite;margin-right:5px;vertical-align:middle;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .site-list{list-style:none;margin:0;padding:0;}
+  .site-list li{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    padding:8px 4px;border-bottom:1px solid var(--border);
+  }
+  .site-list li:last-child{border-bottom:none;}
+  .site-info{min-width:0;}
+  .site-info .sname{font-weight:600;font-size:13.5px;}
+  .site-info .surl{font-size:12px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:420px;display:block;}
+  .site-actions{display:flex;gap:4px;flex-shrink:0;}
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(20,25,40,.45);
+    display:none;align-items:center;justify-content:center;z-index:100;padding:16px;
+  }
+  .modal-overlay.open{display:flex;}
+  .modal-box{
+    background:#fff;border-radius:var(--radius);box-shadow:0 10px 40px rgba(0,0,0,.25);
+    width:100%;max-width:440px;padding:20px;max-height:90vh;overflow:auto;
+  }
+  .modal-box h3{margin-top:0;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;}
+  details.debug{margin-top:6px;}
+  details.debug summary{cursor:pointer;font-size:12.5px;color:var(--text-dim);font-weight:600;}
+  details.debug .query-tag{display:inline-block;background:var(--panel-alt);border:1px solid var(--border);border-radius:6px;padding:3px 8px;margin:4px 4px 0 0;font-size:12px;}
+  .hint-banner{background:var(--warn-bg);color:var(--warn);border:1px solid #f0dba9;border-radius:8px;padding:10px 14px;font-size:13.5px;}
+  .history-entry{border-bottom:1px solid var(--border);padding:8px 0;}
+  .history-entry:last-child{border-bottom:none;}
+  .history-head{display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-size:13px;}
+  .history-head .hdate{font-weight:600;}
+  .history-body{display:none;margin-top:8px;}
+  .history-body.open{display:block;}
+  select#cerebrasModel{max-width:100%;}
+  .link-cell{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;}
+  .section-divider-row td{background:var(--panel-alt);color:var(--text-dim);font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;padding:6px 10px;}
+  .price-cell{font-weight:700;}
+  @media (max-width:860px){
+    .layout{flex-direction:column;}
+    .sidebar{width:100%;}
+    .site-info .surl{max-width:220px;}
+  }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">
+    <div class="brand-badge">CBM</div>
+    <div class="brand-text">
+      <div class="company">CBM Office Team</div>
+      <div class="appname">Price Checker</div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="ghost" id="btnSettings">⚙ Setări API</button>
+  </div>
+</header>
+
+<div id="hintBanner" class="hint-banner" style="display:none;margin:14px 18px 0;max-width:1400px;margin-left:auto;margin-right:auto;"></div>
+
+<div class="layout">
+  <aside class="sidebar">
+    <h2>Produse</h2>
+    <div id="productList"></div>
+    <button class="primary" style="width:100%;margin-top:10px;" id="btnAddProduct">+ Adaugă produs</button>
+  </aside>
+
+  <main class="main" id="mainArea">
+    <div class="empty-state card" id="noProductCard">Selectează sau adaugă un produs pentru a începe.</div>
+  </main>
+</div>
+
+<!-- Generic modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-box" id="modalBox"></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ============ STORAGE ============ */
+const LS_KEY = 'priceChecker_data_v1';
+
+function loadData(){
+  const fallback = { config:{ cerebrasKey:'', cerebrasModel:'llama-3.3-70b', groqKey:'', groqModel:'llama-3.3-70b-versatile', serperKey:'' }, products:[], selectedProductId:null };
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){
+      const parsed = JSON.parse(raw);
+      parsed.config = Object.assign({}, fallback.config, parsed.config || {});
+      return parsed;
+    }
+  }catch(e){ console.warn('Nu s-a putut citi localStorage', e); }
+  return fallback;
+}
+function saveData(){
+  try{
+    localStorage.setItem(LS_KEY, JSON.stringify(state.data));
+  }catch(e){
+    console.warn('Nu s-a putut salva în localStorage', e);
+  }
+}
+
+const state = {
+  data: loadData(),
+  results: {},      // productId -> array of manual result rows
+  autoResults: {},  // productId -> array of automatic result rows
+  searchQueries: {} // productId -> array of query strings used last run
+};
+
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+function escapeHtml(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function safeAttr(s){ return escapeHtml(s).replace(/`/g,'&#96;'); }
+function isValidUrl(u){
+  try{ const p = new URL(u); return p.protocol === 'http:' || p.protocol === 'https:'; }catch(e){ return false; }
+}
+function hostnameOf(u){ try{ return new URL(u).hostname.replace(/^www\./,''); }catch(e){ return u; } }
+
+function getProduct(id){ return state.data.products.find(p => p.id === id); }
+function getSelectedProduct(){ return getProduct(state.data.selectedProductId); }
+
+/* ============ MODAL ============ */
+function openModal(html, onOpen){
+  document.getElementById('modalBox').innerHTML = html;
+  document.getElementById('modalOverlay').classList.add('open');
+  if(onOpen) onOpen();
+}
+function closeModal(){
+  document.getElementById('modalOverlay').classList.remove('open');
+  document.getElementById('modalBox').innerHTML = '';
+}
+document.getElementById('modalOverlay').addEventListener('click', e => {
+  if(e.target.id === 'modalOverlay') closeModal();
+});
+
+/* ============ SETTINGS ============ */
+function refreshHintBanner(){
+  const el = document.getElementById('hintBanner');
+  const cfg = state.data.config;
+  if(!cfg.cerebrasKey && !cfg.groqKey){
+    el.style.display = 'block';
+    el.textContent = '⚠ Setează cel puțin o cheie API (Cerebras și/sau Groq, ca fallback) din „Setări API” pentru a putea rula verificări de preț.';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+document.getElementById('btnSettings').addEventListener('click', openSettingsModal);
+
+function openSettingsModal(){
+  const cfg = state.data.config;
+  openModal(`
+    <h3>Setări API</h3>
+    <p class="muted" style="margin-top:-6px;">Cheile se salvează doar local (localStorage) și sunt trimise exclusiv către api.cerebras.ai și google.serper.dev.</p>
+    <div class="field">
+      <label>Cheie API Cerebras <span class="muted">(provider principal)</span></label>
+      <input type="password" id="inCerebrasKey" placeholder="csk-..." value="${safeAttr(cfg.cerebrasKey)}">
+    </div>
+    <div class="field">
+      <label>Model Cerebras</label>
+      <input list="modelList" id="inCerebrasModel" value="${safeAttr(cfg.cerebrasModel || 'llama-3.3-70b')}">
+      <datalist id="modelList">
+        <option value="llama-3.3-70b">
+        <option value="llama3.1-8b">
+        <option value="llama-4-scout-17b-16e-instruct">
+        <option value="qwen-3-32b">
+        <option value="gpt-oss-120b">
+      </datalist>
+    </div>
+    <div class="field">
+      <label>Cheie API Groq <span class="muted">(fallback, folosit dacă Cerebras eșuează sau lipsește)</span></label>
+      <input type="password" id="inGroqKey" placeholder="gsk_..." value="${safeAttr(cfg.groqKey || '')}">
+    </div>
+    <div class="field">
+      <label>Model Groq</label>
+      <input list="groqModelList" id="inGroqModel" value="${safeAttr(cfg.groqModel || 'llama-3.3-70b-versatile')}">
+      <datalist id="groqModelList">
+        <option value="llama-3.3-70b-versatile">
+        <option value="llama-3.1-8b-instant">
+        <option value="openai/gpt-oss-120b">
+        <option value="qwen/qwen3-32b">
+      </datalist>
+    </div>
+    <div class="field">
+      <label>Cheie API Serper.dev <span class="muted">(doar pt. modul automat)</span></label>
+      <input type="password" id="inSerperKey" placeholder="..." value="${safeAttr(cfg.serperKey)}">
+    </div>
+    <div class="modal-actions">
+      <button class="ghost" id="btnCancelSettings">Anulează</button>
+      <button class="primary" id="btnSaveSettings">Salvează</button>
+    </div>
+  `, () => {
+    document.getElementById('btnCancelSettings').onclick = closeModal;
+    document.getElementById('btnSaveSettings').onclick = () => {
+      cfg.cerebrasKey = document.getElementById('inCerebrasKey').value.trim();
+      cfg.cerebrasModel = document.getElementById('inCerebrasModel').value.trim() || 'llama-3.3-70b';
+      cfg.groqKey = document.getElementById('inGroqKey').value.trim();
+      cfg.groqModel = document.getElementById('inGroqModel').value.trim() || 'llama-3.3-70b-versatile';
+      cfg.serperKey = document.getElementById('inSerperKey').value.trim();
+      saveData();
+      refreshHintBanner();
+      closeModal();
+    };
+  });
+}
+
+/* ============ PRODUCT LIST ============ */
+document.getElementById('btnAddProduct').addEventListener('click', () => openProductModal(null));
+
+function openProductModal(productId){
+  const editing = productId ? getProduct(productId) : null;
+  openModal(`
+    <h3>${editing ? 'Editează produs' : 'Adaugă produs'}</h3>
+    <div class="field">
+      <label>Nume produs</label>
+      <input id="inProductName" value="${editing ? safeAttr(editing.name) : ''}" placeholder="ex. iPhone 15 128GB">
+    </div>
+    <div class="field">
+      <label>SKU <span class="muted">(opțional)</span></label>
+      <input id="inProductSku" value="${editing ? safeAttr(editing.sku||'') : ''}" placeholder="ex. MTP03">
+    </div>
+    <div class="modal-actions">
+      <button class="ghost" id="btnCancelProduct">Anulează</button>
+      <button class="primary" id="btnSaveProduct">Salvează</button>
+    </div>
+  `, () => {
+    document.getElementById('inProductName').focus();
+    document.getElementById('btnCancelProduct').onclick = closeModal;
+    document.getElementById('btnSaveProduct').onclick = () => {
+      const name = document.getElementById('inProductName').value.trim();
+      const sku = document.getElementById('inProductSku').value.trim();
+      if(!name){ alert('Numele produsului este obligatoriu.'); return; }
+      if(editing){
+        editing.name = name; editing.sku = sku;
+      } else {
+        const p = { id: uid(), name, sku, sites: [], history: [] };
+        state.data.products.push(p);
+        state.data.selectedProductId = p.id;
+      }
+      saveData();
+      closeModal();
+      renderProductList();
+      renderMain();
+    };
+  });
+}
+
+function deleteProduct(id){
+  const p = getProduct(id);
+  if(!p) return;
+  if(!confirm(`Ștergi produsul „${p.name}” și toate site-urile/istoricul asociat?`)) return;
+  state.data.products = state.data.products.filter(x => x.id !== id);
+  if(state.data.selectedProductId === id) state.data.selectedProductId = null;
+  delete state.results[id]; delete state.autoResults[id]; delete state.searchQueries[id];
+  saveData();
+  renderProductList();
+  renderMain();
+}
+
+function renderProductList(){
+  const container = document.getElementById('productList');
+  const products = state.data.products;
+  if(!products.length){
+    container.innerHTML = '<div class="empty-state">Niciun produs încă.</div>';
+    return;
+  }
+  container.innerHTML = products.map(p => `
+    <div class="product-item ${p.id === state.data.selectedProductId ? 'active' : ''}" data-id="${p.id}">
+      <div style="min-width:0;">
+        <div class="pname">${escapeHtml(p.name)}</div>
+        ${p.sku ? `<div class="psku">SKU: ${escapeHtml(p.sku)}</div>` : ''}
+      </div>
+      <div class="prow-actions">
+        <button class="ghost small" data-act="edit" title="Editează">✎</button>
+        <button class="ghost small" data-act="del" title="Șterge">🗑</button>
+      </div>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.product-item').forEach(el => {
+    const id = el.getAttribute('data-id');
+    el.addEventListener('click', (e) => {
+      if(e.target.closest('[data-act]')) return;
+      state.data.selectedProductId = id;
+      saveData();
+      renderProductList();
+      renderMain();
+    });
+    el.querySelector('[data-act="edit"]').addEventListener('click', () => openProductModal(id));
+    el.querySelector('[data-act="del"]').addEventListener('click', () => deleteProduct(id));
+  });
+}
+
+/* ============ MAIN AREA ============ */
+function renderMain(){
+  const main = document.getElementById('mainArea');
+  const product = getSelectedProduct();
+  if(!product){
+    main.innerHTML = '<div class="empty-state card" id="noProductCard">Selectează sau adaugă un produs pentru a începe.</div>';
+    return;
+  }
+  main.innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <h2>${escapeHtml(product.name)} ${product.sku ? `<span class="muted" style="font-weight:400;">(SKU: ${escapeHtml(product.sku)})</span>` : ''}</h2>
+        <div class="btn-row">
+          <button class="small" id="btnEditProduct">✎ Editează produs</button>
+        </div>
+      </div>
+
+      <h3 style="margin-bottom:8px;">Site-uri</h3>
+      <ul class="site-list" id="siteList"></ul>
+      <div class="btn-row" style="margin-top:10px;">
+        <button id="btnAddSite">+ Adaugă site</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2 style="font-size:15px;">Verificare preț</h2>
+        <div class="btn-row">
+          <button class="primary" id="btnRunManual">▶ Verifică site-urile manuale</button>
+          <button id="btnRunAuto">🔎 Caută automat</button>
+        </div>
+      </div>
+      <div id="resultsWrap"></div>
+      <details class="debug" id="debugQueries" style="display:none;">
+        <summary>Interogări de căutare folosite</summary>
+        <div id="queryTags"></div>
+      </details>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2 style="font-size:15px;">Istoric verificări</h2></div>
+      <div id="historyWrap"></div>
+    </div>
+  `;
+
+  document.getElementById('btnEditProduct').addEventListener('click', () => openProductModal(product.id));
+  document.getElementById('btnAddSite').addEventListener('click', () => openSiteModal(product.id, null));
+  document.getElementById('btnRunManual').addEventListener('click', () => runManualCheck(product.id));
+  document.getElementById('btnRunAuto').addEventListener('click', () => runAutomaticSearch(product.id));
+
+  renderSiteList(product);
+  renderResultsTable(product);
+  renderSearchQueriesDebug(product);
+  renderHistory(product);
+}
+
+/* ============ SITES ============ */
+function renderSiteList(product){
+  const ul = document.getElementById('siteList');
+  if(!product.sites.length){
+    ul.innerHTML = '<div class="empty-state" style="padding:8px 0;">Niciun site adăugat. Adaugă unul manual sau folosește căutarea automată.</div>';
+    return;
+  }
+  ul.innerHTML = product.sites.map(s => `
+    <li data-id="${s.id}">
+      <div class="site-info">
+        <span class="sname">${escapeHtml(s.name)}</span>
+        <a class="surl" href="${safeAttr(s.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.url)}</a>
+      </div>
+      <div class="site-actions">
+        <button class="small" data-act="refresh" title="Reverifică doar acest site">↻</button>
+        <button class="small ghost" data-act="edit" title="Editează">✎</button>
+        <button class="small danger" data-act="del" title="Șterge">🗑</button>
+      </div>
+    </li>
+  `).join('');
+
+  ul.querySelectorAll('li').forEach(li => {
+    const siteId = li.getAttribute('data-id');
+    li.querySelector('[data-act="refresh"]').addEventListener('click', () => refreshSingleSite(product.id, siteId));
+    li.querySelector('[data-act="edit"]').addEventListener('click', () => openSiteModal(product.id, siteId));
+    li.querySelector('[data-act="del"]').addEventListener('click', () => deleteSite(product.id, siteId));
+  });
+}
+
+function openSiteModal(productId, siteId){
+  const product = getProduct(productId);
+  const editing = siteId ? product.sites.find(s => s.id === siteId) : null;
+  openModal(`
+    <h3>${editing ? 'Editează site' : 'Adaugă site'}</h3>
+    <div class="field">
+      <label>Nume site</label>
+      <input id="inSiteName" value="${editing ? safeAttr(editing.name) : ''}" placeholder="ex. eMAG">
+    </div>
+    <div class="field">
+      <label>URL exact al paginii de produs</label>
+      <input id="inSiteUrl" value="${editing ? safeAttr(editing.url) : ''}" placeholder="https://...">
+    </div>
+    <div class="modal-actions">
+      <button class="ghost" id="btnCancelSite">Anulează</button>
+      <button class="primary" id="btnSaveSite">Salvează</button>
+    </div>
+  `, () => {
+    document.getElementById('inSiteName').focus();
+    document.getElementById('btnCancelSite').onclick = closeModal;
+    document.getElementById('btnSaveSite').onclick = () => {
+      const name = document.getElementById('inSiteName').value.trim();
+      const url = document.getElementById('inSiteUrl').value.trim();
+      if(!name || !url){ alert('Completează numele și URL-ul.'); return; }
+      if(!isValidUrl(url)){ alert('URL invalid — trebuie să înceapă cu http:// sau https://'); return; }
+      if(editing){
+        editing.name = name; editing.url = url;
+      } else {
+        product.sites.push({ id: uid(), name, url });
+      }
+      saveData();
+      closeModal();
+      renderSiteList(product);
+    };
+  });
+}
+
+function deleteSite(productId, siteId){
+  const product = getProduct(productId);
+  if(!confirm('Ștergi acest site din listă?')) return;
+  product.sites = product.sites.filter(s => s.id !== siteId);
+  saveData();
+  renderSiteList(product);
+}
+
+/* ============ CORS PROXY + HTML CLEAN ============ */
+async function fetchViaProxy(url){
+  const attempts = [
+    { name: 'jina-reader', build: u => `https://r.jina.ai/${u}` },
+    { name: 'corsproxy.io', build: u => `https://corsproxy.io/?url=${encodeURIComponent(u)}` },
+    { name: 'codetabs', build: u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}` },
+    { name: 'allorigins', build: u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` }
+  ];
+  const errors = [];
+  for(const { name, build } of attempts){
+    try{
+      const resp = await fetch(build(url), { signal: AbortSignal.timeout(15000) });
+      if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const text = await resp.text();
+      if(!text || text.length < 30) throw new Error('răspuns gol');
+      return text;
+    }catch(e){
+      errors.push(`${name}: ${e.message}`);
+    }
+  }
+  throw new Error('Nu s-a putut prelua pagina prin niciunul din proxy-urile CORS (' + attempts.length + ' încercate) — ' + errors.join(' | '));
+}
+
+function cleanHtml(rawHtml){
+  let doc;
+  try{
+    doc = new DOMParser().parseFromString(rawHtml, 'text/html');
+  }catch(e){
+    return String(rawHtml).slice(0, 15000);
+  }
+  const root = doc.body || doc.documentElement;
+  if(!root) return '';
+  root.querySelectorAll('script, style, svg, noscript, iframe, link, meta, template, head, canvas').forEach(el => el.remove());
+
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_COMMENT, null);
+  const comments = [];
+  let n;
+  while((n = walker.nextNode())) comments.push(n);
+  comments.forEach(c => c.remove());
+
+  root.querySelectorAll('*').forEach(el => {
+    [...el.attributes].forEach(attr => {
+      if(el.tagName === 'A' && attr.name === 'href') return;
+      el.removeAttribute(attr.name);
+    });
+  });
+
+  let html = root.innerHTML.replace(/\s{2,}/g, ' ').trim();
+  const MAX = 15000;
+  if(html.length > MAX){
+    let truncated = html.slice(0, MAX);
+    const lastClose = truncated.lastIndexOf('>');
+    if(lastClose > -1) truncated = truncated.slice(0, lastClose + 1);
+    html = truncated;
+  }
+  return html;
+}
+
+/* ============ CEREBRAS / SERPER API ============ */
+async function callChatCompletion(endpoint, apiKey, model, messages, opts){
+  const body = {
+    model,
+    messages,
+    temperature: 0.1,
+    max_tokens: opts.maxTokens || 500
+  };
+  if(opts.tools){ body.tools = opts.tools; body.tool_choice = opts.toolChoice || 'auto'; }
+  const resp = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    body: JSON.stringify(body)
+  });
+  if(!resp.ok){
+    const errText = await resp.text().catch(() => '');
+    const err = new Error(`API a răspuns cu ${resp.status}: ${errText.slice(0,300)}`);
+    err.status = resp.status;
+    throw err;
+  }
+  return resp.json();
+}
+
+async function callLLM(messages, opts){
+  opts = opts || {};
+  const cfg = state.data.config;
+  if(!cfg.cerebrasKey && !cfg.groqKey){
+    throw new Error('Lipsește cheia API Cerebras (și Groq) — setează cel puțin una din Setări API.');
+  }
+  if(cfg.cerebrasKey){
+    try{
+      return await callChatCompletion('https://api.cerebras.ai/v1/chat/completions', cfg.cerebrasKey, cfg.cerebrasModel || 'llama-3.3-70b', messages, opts);
+    }catch(e){
+      console.warn('Apelul către Cerebras a eșuat.', e);
+      if(!cfg.groqKey) throw e;
+    }
+  }
+  return callChatCompletion('https://api.groq.com/openai/v1/chat/completions', cfg.groqKey, cfg.groqModel || 'llama-3.3-70b-versatile', messages, opts);
+}
+
+async function callSerper(query){
+  const cfg = state.data.config;
+  if(!cfg.serperKey) throw new Error('Lipsește cheia API Serper.dev (Setări API).');
+  const resp = await fetch('https://google.serper.dev/search', {
+    method: 'POST',
+    headers: { 'X-API-KEY': cfg.serperKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ q: query, gl: 'ro', hl: 'ro' })
+  });
+  if(!resp.ok) throw new Error(`Serper.dev API a răspuns cu ${resp.status}`);
+  return resp.json();
+}
+
+function parseJsonLoose(text){
+  if(!text) throw new Error('Răspuns gol de la model.');
+  try{ return JSON.parse(text); }catch(e){}
+  const match = text.match(/\{[\s\S]*\}/);
+  if(match){
+    try{ return JSON.parse(match[0]); }catch(e){}
+  }
+  throw new Error('Nu s-a putut interpreta răspunsul JSON al modelului.');
+}
+
+async function extractPriceFromContent(productName, cleanedHtml){
+  const systemPrompt = 'Ești un asistent care extrage informații despre prețul unui produs dintr-o pagină web curățată (HTML simplificat, fără JS/CSS). ' +
+    'Răspunde STRICT cu un obiect JSON valid, fără text suplimentar înainte sau după, cu exact aceste câmpuri: ' +
+    '{"nume_produs": string, "pret": number|null, "moneda": string, "disponibil": boolean, "incredere": "mare"|"medie"|"mica"}. ' +
+    'Reguli: "pret" e doar numărul (fără simbol monetar, fără separator de mii, punct zecimal); dacă nu găsești prețul, pune null. ' +
+    '"moneda" e codul monedei (RON, EUR, USD etc). "disponibil" e true dacă produsul pare în stoc. ' +
+    '"incredere" reflectă cât de sigur ești de datele extrase. Nu adăuga explicații, doar obiectul JSON.';
+  const userPrompt = `Produs căutat: "${productName}"\n\nConținut pagină web (curățat):\n${cleanedHtml}`;
+  const data = await callLLM([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ], { maxTokens: 400 });
+  const content = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : '';
+  const parsed = parseJsonLoose(content);
+  return {
+    nume_produs: parsed.nume_produs || productName,
+    pret: (typeof parsed.pret === 'number') ? parsed.pret : (parsed.pret ? Number(parsed.pret) : null),
+    moneda: parsed.moneda || '',
+    disponibil: !!parsed.disponibil,
+    incredere: parsed.incredere || 'mica'
+  };
+}
+
+/* ============ MANUAL MODE ============ */
+async function checkSiteRow(product, site){
+  let raw, cleaned;
+  try{
+    raw = await fetchViaProxy(site.url);
+    cleaned = cleanHtml(raw);
+  }catch(e){
+    return { id: site.id, siteName: site.name, url: site.url, source: 'manual', status: 'error', errorMsg: 'Preluare pagină: ' + e.message };
+  }
+  try{
+    const extracted = await extractPriceFromContent(product.name, cleaned);
+    return Object.assign({ id: site.id, siteName: site.name, url: site.url, source: 'manual', status: 'ok' }, extracted);
+  }catch(e){
+    return { id: site.id, siteName: site.name, url: site.url, source: 'manual', status: 'error', errorMsg: 'Extragere AI: ' + e.message };
+  }
+}
+
+async function runManualCheck(productId){
+  const product = getProduct(productId);
+  if(!product) return;
+  if(!product.sites.length){ alert('Nu există site-uri adăugate pentru acest produs.'); return; }
+  if(!state.data.config.cerebrasKey && !state.data.config.groqKey){ alert('Setează cheia API Cerebras sau Groq din Setări API.'); openSettingsModal(); return; }
+
+  state.results[productId] = product.sites.map(s => ({ id: s.id, siteName: s.name, url: s.url, source: 'manual', status: 'loading' }));
+  renderResultsTable(product);
+
+  const runId = Date.now();
+  product.sites.forEach(async (site) => {
+    const row = await checkSiteRow(product, site);
+    const arr = state.results[productId];
+    if(!arr) return;
+    const idx = arr.findIndex(r => r.id === site.id && r.source === 'manual');
+    if(idx > -1) arr[idx] = row; else arr.push(row);
+    renderResultsTable(product);
+    maybeFinishRun(productId, runId);
+  });
+}
+
+const pendingRuns = {};
+function maybeFinishRun(productId, runId){
+  const arr = state.results[productId] || [];
+  const stillLoading = arr.some(r => r.status === 'loading');
+  if(!stillLoading){
+    if(pendingRuns[productId] === runId) return;
+    pendingRuns[productId] = runId;
+    saveHistoryEntry(productId);
+  }
+}
+
+async function refreshSingleSite(productId, siteId){
+  const product = getProduct(productId);
+  const site = product.sites.find(s => s.id === siteId);
+  if(!site) return;
+  if(!state.data.config.cerebrasKey && !state.data.config.groqKey){ alert('Setează cheia API Cerebras sau Groq din Setări API.'); openSettingsModal(); return; }
+  if(!state.results[productId]) state.results[productId] = [];
+  const arr = state.results[productId];
+  let idx = arr.findIndex(r => r.id === siteId && r.source === 'manual');
+  const loadingRow = { id: siteId, siteName: site.name, url: site.url, source: 'manual', status: 'loading' };
+  if(idx > -1) arr[idx] = loadingRow; else arr.push(loadingRow);
+  renderResultsTable(product);
+
+  const row = await checkSiteRow(product, site);
+  idx = arr.findIndex(r => r.id === siteId && r.source === 'manual');
+  if(idx > -1) arr[idx] = row; else arr.push(row);
+  renderResultsTable(product);
+  saveHistoryEntry(productId);
+}
+
+/* ============ AUTOMATIC MODE ============ */
+async function runAutomaticSearch(productId){
+  const product = getProduct(productId);
+  if(!product) return;
+  if(!state.data.config.cerebrasKey && !state.data.config.groqKey){ alert('Setează cheia API Cerebras sau Groq din Setări API.'); openSettingsModal(); return; }
+  if(!state.data.config.serperKey){ alert('Setează cheia API Serper.dev din Setări API pentru modul automat.'); openSettingsModal(); return; }
+
+  const confirmed = confirm(
+    'Modul automat va face aproximativ:\n' +
+    '- până la 3 căutări web (Serper.dev)\n' +
+    '- până la 4 verificări de pagină (fetch + extragere AI)\n' +
+    '- câteva apeluri către modelul Cerebras\n\n' +
+    'Continui?'
+  );
+  if(!confirmed) return;
+
+  state.autoResults[productId] = [{ id: 'auto-loading', siteName: 'Căutare automată...', url: '', source: 'automat', status: 'loading' }];
+  state.searchQueries[productId] = [];
+  renderResultsTable(product);
+  renderSearchQueriesDebug(product);
+
+  try{
+    const queriesUsed = [];
+    let chosenLinks;
+    try{
+      chosenLinks = await getChosenLinksToolCalling(product, queriesUsed);
+    }catch(toolErr){
+      console.warn('Fluxul cu tool calling a eșuat, se folosește fallback-ul.', toolErr);
+      const fb = await fallbackSearchFlow(product);
+      queriesUsed.push(...fb.queries);
+      state.searchQueries[productId] = queriesUsed;
+      state.autoResults[productId] = fb.rows;
+      renderResultsTable(product);
+      renderSearchQueriesDebug(product);
+      saveHistoryEntry(productId);
+      return;
+    }
+    state.searchQueries[productId] = queriesUsed;
+    await processChosenLinks(product, chosenLinks);
+  }catch(e){
+    state.autoResults[productId] = [{ id: 'auto-error', siteName: 'Căutare automată', url: '', source: 'automat', status: 'error', errorMsg: e.message }];
+    renderResultsTable(product);
+  }
+  renderSearchQueriesDebug(product);
+}
+
+async function getChosenLinksToolCalling(product, queriesUsedOut){
+  const tools = [{
+    type: 'function',
+    function: {
+      name: 'search_web',
+      description: 'Caută pe web informații despre prețul unui produs în magazine online.',
+      parameters: {
+        type: 'object',
+        properties: { query: { type: 'string', description: 'Interogarea de căutare' } },
+        required: ['query']
+      }
+    }
+  }];
+  const systemPrompt = `Ai acces la un tool de căutare web numit search_web. Caută prețul actual pentru produsul "${product.name}" în magazine online din România. ` +
+    'Poți apela search_web de mai multe ori (maxim 3 apeluri în total) cu interogări diferite. ' +
+    'Alege doar rezultate de pe magazine online recunoscute (ex. eMAG, Altex, Flanco, PC Garage, Cel.ro, Evomag, Media Galaxy), nu forumuri, bloguri, agregatoare de preț sau marketplace-uri generice. ' +
+    'Odată ce ai suficiente informații, oprește-te din a mai apela tool-ul și răspunde STRICT cu un obiect JSON, fără alt text: ' +
+    '{"linkuri_alese": [{"url": string, "titlu": string}, ...]} cu între 2 și 4 intrări.';
+
+  let messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: `Găsește prețul curent pentru: ${product.name}${product.sku ? ' (SKU: ' + product.sku + ')' : ''}` }
+  ];
+  let searchCalls = 0;
+  const MAX_SEARCH_CALLS = 3;
+  const MAX_ROUNDS = 6;
+
+  for(let round = 0; round < MAX_ROUNDS; round++){
+    const data = await callLLM(messages, { tools, toolChoice: 'auto', maxTokens: 600 });
+    const msg = data.choices && data.choices[0] && data.choices[0].message;
+    if(!msg) throw new Error('Răspuns invalid de la Cerebras (tool calling).');
+
+    if(msg.tool_calls && msg.tool_calls.length){
+      messages.push({ role: 'assistant', content: msg.content || null, tool_calls: msg.tool_calls });
+      for(const tc of msg.tool_calls){
+        let args = {};
+        try{ args = JSON.parse(tc.function.arguments || '{}'); }catch(e){}
+        const query = args.query || product.name;
+        let toolResultContent;
+        if(searchCalls >= MAX_SEARCH_CALLS){
+          toolResultContent = JSON.stringify({ eroare: 'Limita de căutări a fost atinsă.' });
+        } else {
+          searchCalls++;
+          queriesUsedOut.push(query);
+          try{
+            const serperData = await callSerper(query);
+            const organic = (serperData.organic || []).slice(0, 8).map(r => ({ titlu: r.title, link: r.link, fragment: r.snippet }));
+            toolResultContent = JSON.stringify({ rezultate: organic });
+          }catch(e){
+            toolResultContent = JSON.stringify({ eroare: e.message });
+          }
+        }
+        messages.push({ role: 'tool', tool_call_id: tc.id, content: toolResultContent });
+      }
+      continue;
+    }
+
+    const parsed = parseJsonLoose(msg.content || '');
+    const links = Array.isArray(parsed.linkuri_alese) ? parsed.linkuri_alese.filter(l => l && l.url) : [];
+    if(!links.length) throw new Error('Modelul nu a ales niciun link.');
+    return links.slice(0, 4);
+  }
+  throw new Error('Prea multe runde de tool calling fără un răspuns final.');
+}
+
+async function processChosenLinks(product, links){
+  const rows = links.map(l => ({
+    id: 'auto-' + uid(),
+    siteName: l.titlu || hostnameOf(l.url),
+    url: l.url,
+    source: 'automat',
+    status: 'loading'
+  }));
+  state.autoResults[product.id] = rows;
+  renderResultsTable(product);
+
+  await Promise.allSettled(rows.map(async (row) => {
+    let raw, cleaned;
+    try{
+      raw = await fetchViaProxy(row.url);
+      cleaned = cleanHtml(raw);
+    }catch(e){
+      row.status = 'error';
+      row.errorMsg = 'Preluare pagină: ' + e.message;
+      renderResultsTable(product);
+      return;
+    }
+    try{
+      const extracted = await extractPriceFromContent(product.name, cleaned);
+      Object.assign(row, extracted, { status: 'ok' });
+    }catch(e){
+      row.status = 'error';
+      row.errorMsg = 'Extragere AI: ' + e.message;
+    }
+    renderResultsTable(product);
+  }));
+  saveHistoryEntry(product.id);
+}
+
+async function fallbackSearchFlow(product){
+  const queries = [`${product.name} pret romania`, `${product.name} magazin online pret`];
+  let allOrganic = [];
+  for(const q of queries){
+    try{
+      const data = await callSerper(q);
+      allOrganic.push(...(data.organic || []).slice(0, 6));
+    }catch(e){ /* continuă cu următoarea interogare */ }
+  }
+  if(!allOrganic.length) throw new Error('Nicio căutare Serper.dev nu a reușit.');
+
+  const listText = allOrganic.slice(0, 12).map((r, i) => `${i+1}. ${r.title}\nURL: ${r.link}\nFragment: ${r.snippet || ''}`).join('\n\n');
+  const systemPrompt = 'Ești un asistent care alege cele mai relevante rezultate de căutare pentru prețul unui produs și extrage prețul direct din fragmentele text disponibile (nu ai acces la paginile complete, doar la titlu/URL/fragment). ' +
+    'Alege doar magazine online recunoscute din România, nu forumuri, bloguri, agregatoare sau marketplace-uri generice. ' +
+    'Răspunde STRICT cu JSON, fără alt text: {"rezultate": [{"url": string, "titlu": string, "nume_produs": string, "pret": number|null, "moneda": string, "disponibil": boolean, "incredere": "mare"|"medie"|"mica"}, ...]} cu între 2 și 4 intrări, alese din lista dată.';
+  const userPrompt = `Produs căutat: "${product.name}"\n\nRezultate căutare:\n${listText}`;
+
+  const data = await callLLM([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ], { maxTokens: 800 });
+  const content = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : '';
+  const parsed = parseJsonLoose(content);
+  const results = Array.isArray(parsed.rezultate) ? parsed.rezultate.slice(0, 4) : [];
+  if(!results.length) throw new Error('Modelul nu a ales niciun rezultat din căutare.');
+
+  const rows = results.map(r => ({
+    id: 'auto-fb-' + uid(),
+    siteName: r.titlu || (r.url ? hostnameOf(r.url) : 'necunoscut'),
+    url: r.url || '',
+    source: 'automat',
+    nume_produs: r.nume_produs || product.name,
+    pret: (typeof r.pret === 'number') ? r.pret : (r.pret ? Number(r.pret) : null),
+    moneda: r.moneda || '',
+    disponibil: !!r.disponibil,
+    incredere: r.incredere || 'mica',
+    status: 'ok'
+  }));
+  return { rows, queries };
+}
+
+/* ============ SAVE TO MY LIST ============ */
+function saveAutoResultToList(productId, rowId){
+  const product = getProduct(productId);
+  const row = (state.autoResults[productId] || []).find(r => r.id === rowId);
+  if(!product || !row || !row.url) return;
+  if(product.sites.some(s => s.url === row.url)){
+    alert('Acest URL este deja în lista de site-uri a produsului.');
+    return;
+  }
+  product.sites.push({ id: uid(), name: row.siteName || hostnameOf(row.url), url: row.url });
+  saveData();
+  renderSiteList(product);
+  alert('Site adăugat în lista fixă a produsului.');
+}
+
+/* ============ RESULTS TABLE ============ */
+function renderResultsTable(product){
+  const wrap = document.getElementById('resultsWrap');
+  if(!wrap) return;
+  const manualRows = state.results[product.id] || [];
+  const autoRows = state.autoResults[product.id] || [];
+
+  if(!manualRows.length && !autoRows.length){
+    wrap.innerHTML = '<div class="empty-state" style="padding:12px 0;">Nicio verificare rulată încă pentru acest produs.</div>';
+    return;
+  }
+
+  let minPrice = Infinity, minRowKey = null;
+  [...manualRows, ...autoRows].forEach((r, i) => {
+    if(r.status === 'ok' && typeof r.pret === 'number' && !isNaN(r.pret) && r.pret < minPrice){
+      minPrice = r.pret;
+      minRowKey = r.source + '-' + r.id;
+    }
+  });
+
+  function renderRow(r){
+    const key = r.source + '-' + r.id;
+    const isBest = key === minRowKey;
+    let inner = '';
+    if(r.status === 'loading'){
+      inner = `
+        <td>${escapeHtml(r.siteName)}</td>
+        <td colspan="4"><span class="spinner"></span>Se verifică...</td>
+        <td><span class="badge loading">se încarcă</span></td>
+        <td>${badgeSource(r)}</td>
+      `;
+      return `<tr>${inner}</tr>`;
+    }
+    if(r.status === 'error'){
+      inner = `
+        <td>${escapeHtml(r.siteName)}</td>
+        <td colspan="4" class="muted">${escapeHtml(r.errorMsg || 'Eroare necunoscută')}</td>
+        <td><span class="badge error">eroare</span></td>
+        <td>${badgeSource(r)}</td>
+      `;
+      return `<tr class="row-error">${inner}</tr>`;
+    }
+    const confClass = r.incredere === 'mare' ? 'conf-mare' : (r.incredere === 'medie' ? 'conf-medie' : 'conf-mica');
+    const saveBtn = r.source === 'automat' && r.url ? `<button class="small" data-save="${escapeHtml(key)}">💾 Salvează în lista mea</button>` : '';
+    inner = `
+      <td>${escapeHtml(r.siteName)}</td>
+      <td>${escapeHtml(r.nume_produs || '-')}</td>
+      <td class="price-cell">${r.pret != null ? escapeHtml(r.pret) : '-'}</td>
+      <td>${escapeHtml(r.moneda || '-')}</td>
+      <td>${r.disponibil ? '✅ Disponibil' : '❌ Indisponibil'}</td>
+      <td><span class="badge ${confClass}">${escapeHtml(r.incredere || 'mica')}</span></td>
+      <td>
+        ${badgeSource(r)}
+        ${r.url ? `<a href="${safeAttr(r.url)}" target="_blank" rel="noopener noreferrer" class="link-cell" title="${safeAttr(r.url)}">🔗 sursă</a>` : ''}
+        ${saveBtn}
+      </td>
+    `;
+    return `<tr data-rowkey="${escapeHtml(key)}" class="${isBest ? 'best-price' : ''}">${inner}</tr>`;
+  }
+
+  let rowsHtml = manualRows.map(renderRow).join('');
+  if(autoRows.length){
+    if(manualRows.length){
+      rowsHtml += `<tr class="section-divider-row"><td colspan="7">Rezultate căutare automată</td></tr>`;
+    }
+    rowsHtml += autoRows.map(renderRow).join('');
+  }
+
+  wrap.innerHTML = `
+    <div style="overflow-x:auto;">
+    <table>
+      <thead>
+        <tr>
+          <th>Site</th><th>Nume produs găsit</th><th>Preț</th><th>Monedă</th><th>Disponibilitate</th><th>Status / Încredere</th><th>Sursă</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    </div>
+  `;
+
+  wrap.querySelectorAll('[data-save]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.getAttribute('data-save');
+      const row = autoRows.find(r => (r.source + '-' + r.id) === key);
+      if(row) saveAutoResultToList(product.id, row.id);
+    });
+  });
+}
+
+function badgeSource(r){
+  if(r.source === 'automat') return '<span class="badge automat">Automat</span>';
+  return '<span class="badge manual">Manual</span>';
+}
+
+function renderSearchQueriesDebug(product){
+  const details = document.getElementById('debugQueries');
+  const tagsWrap = document.getElementById('queryTags');
+  const queries = state.searchQueries[product.id] || [];
+  if(!queries.length){
+    details.style.display = 'none';
+    return;
+  }
+  details.style.display = 'block';
+  tagsWrap.innerHTML = queries.map(q => `<span class="query-tag">${escapeHtml(q)}</span>`).join('');
+}
+
+/* ============ HISTORY ============ */
+function saveHistoryEntry(productId){
+  const product = getProduct(productId);
+  if(!product) return;
+  const manual = state.results[productId] || [];
+  const auto = state.autoResults[productId] || [];
+  const combined = [...manual, ...auto].filter(r => r.status !== 'loading');
+  if(!combined.length) return;
+  product.history = product.history || [];
+  product.history.unshift({ date: new Date().toISOString(), results: combined });
+  product.history = product.history.slice(0, 10);
+  saveData();
+  renderHistory(product);
+}
+
+function renderHistory(product){
+  const wrap = document.getElementById('historyWrap');
+  if(!wrap) return;
+  const history = product.history || [];
+  if(!history.length){
+    wrap.innerHTML = '<div class="empty-state" style="padding:8px 0;">Nicio verificare salvată în istoric încă.</div>';
+    return;
+  }
+  wrap.innerHTML = history.map((h, idx) => {
+    const okResults = h.results.filter(r => r.status === 'ok' && typeof r.pret === 'number');
+    const min = okResults.length ? Math.min(...okResults.map(r => r.pret)) : null;
+    const dateStr = new Date(h.date).toLocaleString('ro-RO');
+    const rowsHtml = h.results.map(r => `
+      <tr>
+        <td>${escapeHtml(r.siteName)}</td>
+        <td>${r.status === 'ok' ? escapeHtml(r.nume_produs || '-') : '-'}</td>
+        <td>${r.status === 'ok' && r.pret != null ? escapeHtml(r.pret) + ' ' + escapeHtml(r.moneda || '') : (r.status === 'error' ? 'eroare' : '-')}</td>
+        <td>${badgeSource(r)}</td>
+      </tr>
+    `).join('');
+    return `
+      <div class="history-entry">
+        <div class="history-head" data-idx="${idx}">
+          <span class="hdate">${dateStr}</span>
+          <span class="muted">${h.results.length} rezultate${min != null ? ' · minim ' + min : ''}</span>
+        </div>
+        <div class="history-body" id="histBody-${idx}">
+          <table><tbody>${rowsHtml}</tbody></table>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  wrap.querySelectorAll('.history-head').forEach(head => {
+    head.addEventListener('click', () => {
+      const idx = head.getAttribute('data-idx');
+      document.getElementById('histBody-' + idx).classList.toggle('open');
+    });
+  });
+}
+
+/* ============ INIT ============ */
+function init(){
+  refreshHintBanner();
+  renderProductList();
+  renderMain();
+}
+init();
+
+})();
+</script>
+</body>
+</html>
