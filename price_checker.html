@@ -573,6 +573,20 @@ async function fetchViaProxy(url){
   throw new Error('Nu s-a putut prelua pagina prin niciunul din proxy-urile CORS (' + attempts.length + ' încercate) — ' + errors.join(' | '));
 }
 
+// Elimină linii care sunt doar link-uri de navigare/meniu (tipic pentru markdown-ul
+// întors de r.jina.ai) — pe pagini de produs reale, prețul apare adesea la mii de
+// caractere distanță din cauza meniului/footer-ului, dincolo de limita de trunchiere.
+// Pentru conținut HTML (de la ceilalți proxy) e un no-op inofensiv.
+function stripNavLines(text){
+  return text.split('\n').filter(line => {
+    const trimmed = line.trim();
+    if(!trimmed) return false;
+    if(/^[\*\-]\s*\[.*?\]\(https?:\/\/[^\)]*\)\s*(".*?")?\s*$/.test(trimmed)) return false;
+    if(/^!?\[.*?\]\(https?:\/\/[^\)]*\)\]?\(https?:\/\/[^\)]*\)?$/.test(trimmed)) return false;
+    return true;
+  }).join('\n');
+}
+
 function cleanHtml(rawHtml){
   let doc;
   try{
@@ -582,7 +596,7 @@ function cleanHtml(rawHtml){
   }
   const root = doc.body || doc.documentElement;
   if(!root) return '';
-  root.querySelectorAll('script, style, svg, noscript, iframe, link, meta, template, head, canvas').forEach(el => el.remove());
+  root.querySelectorAll('script, style, svg, noscript, iframe, link, meta, template, head, canvas, nav, header, footer, aside').forEach(el => el.remove());
 
   const walker = doc.createTreeWalker(root, NodeFilter.SHOW_COMMENT, null);
   const comments = [];
@@ -729,7 +743,7 @@ async function checkSiteRow(product, site){
   let raw, cleaned;
   try{
     raw = await fetchViaProxy(site.url);
-    cleaned = cleanHtml(raw);
+    cleaned = cleanHtml(stripNavLines(raw));
   }catch(e){
     return { id: site.id, siteName: site.name, url: site.url, source: 'manual', status: 'error', errorMsg: 'Preluare pagină: ' + e.message };
   }
@@ -920,7 +934,7 @@ async function processChosenLinks(product, links){
     let raw, cleaned;
     try{
       raw = await fetchViaProxy(row.url);
-      cleaned = cleanHtml(raw);
+      cleaned = cleanHtml(stripNavLines(raw));
     }catch(e){
       row.status = 'error';
       row.errorMsg = 'Preluare pagină: ' + e.message;
