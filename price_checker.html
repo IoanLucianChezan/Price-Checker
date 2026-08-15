@@ -590,6 +590,18 @@ function stripNavLines(text){
   }).join('\n');
 }
 
+// Semnale text specifice paginilor de blocare/captcha (Akamai, Cloudflare, AWS WAF etc).
+// Termeni deliberat specifici (nu "blocked" simplu) ca să nu prindă descrieri de produs normale.
+const BLOCK_SIGNATURES = [
+  'trafic neobișnuit', 'unusual traffic', 'verify you are human', 'checking your browser',
+  'network authentication required', 'access denied', 'captcha', 'robot check',
+  'attention required | cloudflare', 'please enable javascript and cookies'
+];
+function detectBlockedPage(text){
+  const lower = text.toLowerCase();
+  return BLOCK_SIGNATURES.find(sig => lower.includes(sig)) || null;
+}
+
 function cleanHtml(rawHtml){
   let doc;
   try{
@@ -731,8 +743,17 @@ async function extractPriceFromContent(productName, cleanedHtml, debug){
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
   ], { maxTokens: 400 });
-  const content = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : '';
-  if(debug){ debug.aiRawResponse = content; debug.modelUsed = data.model || '(necunoscut)'; }
+  const choice = data.choices && data.choices[0];
+  const content = choice && choice.message ? choice.message.content : '';
+  if(debug){
+    debug.aiRawResponse = content;
+    debug.modelUsed = data.model || '(necunoscut)';
+    if(!content){
+      debug.finishReason = choice ? choice.finish_reason : '(necunoscut)';
+      debug.refusal = choice && choice.message ? choice.message.refusal : undefined;
+      debug.fullChoiceJson = JSON.stringify(choice || data).slice(0, 800);
+    }
+  }
   const parsed = parseJsonLoose(content);
   return {
     nume_produs: parsed.nume_produs || productName,
@@ -743,12 +764,12 @@ async function extractPriceFromContent(productName, cleanedHtml, debug){
   };
 }
 
-/* ============ MANUAL MODE ============ */
-async function checkSiteRow(product, site){
-  const debug = {};
+// Fetch + curățare + detecție blocaj + extragere AI, folosit atât de modul manual cât și
+// de cel automat, ca să se comporte identic (inclusiv detectorul de pagini blocate).
+async function fetchAndExtract(product, url, debug){
   let cleaned;
   try{
-    const fetched = await fetchViaProxy(site.url);
+    const fetched = await fetchViaProxy(url);
     debug.proxy = fetched.proxy;
     debug.rawLen = fetched.text.length;
     const stripped = stripNavLines(fetched.text);
@@ -757,14 +778,29 @@ async function checkSiteRow(product, site){
     debug.cleanedLen = cleaned.length;
     debug.cleanedPreview = cleaned.slice(0, 600);
   }catch(e){
-    return { id: site.id, siteName: site.name, url: site.url, source: 'manual', status: 'error', errorMsg: 'Preluare pagină: ' + e.message, debug };
+    return { ok: false, errorMsg: 'Preluare pagină: ' + e.message };
+  }
+  const blocked = detectBlockedPage(cleaned);
+  if(blocked){
+    debug.blockedDetected = blocked;
+    return { ok: false, errorMsg: `Pagina pare blocată de protecție anti-bot/captcha (semnal: "${blocked}") — nu s-a mai apelat AI.` };
   }
   try{
     const extracted = await extractPriceFromContent(product.name, cleaned, debug);
-    return Object.assign({ id: site.id, siteName: site.name, url: site.url, source: 'manual', status: 'ok', debug }, extracted);
+    return { ok: true, extracted };
   }catch(e){
-    return { id: site.id, siteName: site.name, url: site.url, source: 'manual', status: 'error', errorMsg: 'Extragere AI: ' + e.message, debug };
+    return { ok: false, errorMsg: 'Extragere AI: ' + e.message };
   }
+}
+
+/* ============ MANUAL MODE ============ */
+async function checkSiteRow(product, site){
+  const debug = {};
+  const result = await fetchAndExtract(product, site.url, debug);
+  if(result.ok){
+    return Object.assign({ id: site.id, siteName: site.name, url: site.url, source: 'manual', status: 'ok', debug }, result.extracted);
+  }
+  return { id: site.id, siteName: site.name, url: site.url, source: 'manual', status: 'error', errorMsg: result.errorMsg, debug };
 }
 
 async function runManualCheck(productId){
@@ -878,8 +914,8 @@ async function runAutomaticSearch(productId){
   const confirmed = confirm(
     'Modul automat va face aproximativ:\n' +
     '- până la 3 căutări web (Serper.dev)\n' +
-    '- până la 4 verificări de pagină (fetch + extragere AI)\n' +
-    '- câteva apeluri către modelul Cerebras\n\n' +
+    '- 4 verificări de pagină (fetch + extragere AI), plus până la 4 în plus dacă un link inițial e blocat/eșuează (înlocuit automat cu unul din aceleași rezultate de căutare)\n' +
+    '- câteva apeluri către modelul AI (Cerebras/Groq)\n\n' +
     'Continui?'
   );
   if(!confirmed) return;
@@ -891,9 +927,10 @@ async function runAutomaticSearch(productId){
 
   try{
     const queriesUsed = [];
+    const pool = [];
     let chosenLinks;
     try{
-      chosenLinks = await getChosenLinksToolCalling(product, queriesUsed);
+      chosenLinks = await getChosenLinksToolCalling(product, queriesUsed, pool);
     }catch(toolErr){
       console.warn('Fluxul cu tool calling a eșuat, se folosește fallback-ul.', toolErr);
       const fb = await fallbackSearchFlow(product);
@@ -906,7 +943,7 @@ async function runAutomaticSearch(productId){
       return;
     }
     state.searchQueries[productId] = queriesUsed;
-    await processChosenLinks(product, chosenLinks);
+    await processChosenLinks(product, chosenLinks, pool);
   }catch(e){
     state.autoResults[productId] = [{ id: 'auto-error', siteName: 'Căutare automată', url: '', source: 'automat', status: 'error', errorMsg: e.message }];
     renderResultsTable(product);
@@ -914,7 +951,7 @@ async function runAutomaticSearch(productId){
   renderSearchQueriesDebug(product);
 }
 
-async function getChosenLinksToolCalling(product, queriesUsedOut){
+async function getChosenLinksToolCalling(product, queriesUsedOut, poolOut){
   const tools = [{
     type: 'function',
     function: {
@@ -961,6 +998,11 @@ async function getChosenLinksToolCalling(product, queriesUsedOut){
           try{
             const serperData = await callSerper(query);
             const organic = (serperData.organic || []).slice(0, 8).map(r => ({ titlu: r.title, link: r.link, fragment: r.snippet }));
+            if(poolOut){
+              organic.forEach(r => {
+                if(r.link && !poolOut.some(p => p.url === r.link)) poolOut.push({ url: r.link, titlu: r.titlu });
+              });
+            }
             toolResultContent = JSON.stringify({ rezultate: organic });
           }catch(e){
             toolResultContent = JSON.stringify({ eroare: e.message });
@@ -979,7 +1021,9 @@ async function getChosenLinksToolCalling(product, queriesUsedOut){
   throw new Error('Prea multe runde de tool calling fără un răspuns final.');
 }
 
-async function processChosenLinks(product, links){
+async function processChosenLinks(product, links, pool){
+  pool = pool || [];
+  const usedUrls = new Set(links.map(l => l.url));
   const rows = links.map(l => ({
     id: 'auto-' + uid(),
     siteName: l.titlu || hostnameOf(l.url),
@@ -995,28 +1039,33 @@ async function processChosenLinks(product, links){
   for(const row of rows){
     const debug = {};
     row.debug = debug;
-    let cleaned;
-    try{
-      const fetched = await fetchViaProxy(row.url);
-      debug.proxy = fetched.proxy;
-      debug.rawLen = fetched.text.length;
-      const stripped = stripNavLines(fetched.text);
-      debug.strippedLen = stripped.length;
-      cleaned = cleanHtml(stripped);
-      debug.cleanedLen = cleaned.length;
-      debug.cleanedPreview = cleaned.slice(0, 600);
-    }catch(e){
-      row.status = 'error';
-      row.errorMsg = 'Preluare pagină: ' + e.message;
-      renderResultsTable(product);
-      continue;
+    let result = await fetchAndExtract(product, row.url, debug);
+
+    // dacă link-ul ales inițial e blocat/eșuează, încearcă UN singur link alternativ
+    // din rezultatele de căutare deja obținute (fără căutări suplimentare)
+    if(!result.ok){
+      const alt = pool.find(p => p.url && !usedUrls.has(p.url));
+      if(alt){
+        usedUrls.add(alt.url);
+        const altDebug = {};
+        const altResult = await fetchAndExtract(product, alt.url, altDebug);
+        if(altResult.ok){
+          row.url = alt.url;
+          row.siteName = alt.titlu || hostnameOf(alt.url);
+          row.debug = Object.assign({ inlocuitLinkOriginal: row.url, motivInlocuire: result.errorMsg }, altDebug);
+          result = altResult;
+        } else {
+          row.debug = Object.assign(debug, { altLinkIncercat: alt.url, altLinkEroare: altResult.errorMsg });
+          result.errorMsg = `${result.errorMsg} — link alternativ (${hostnameOf(alt.url)}) încercat, tot a eșuat: ${altResult.errorMsg}`;
+        }
+      }
     }
-    try{
-      const extracted = await extractPriceFromContent(product.name, cleaned, debug);
-      Object.assign(row, extracted, { status: 'ok' });
-    }catch(e){
+
+    if(result.ok){
+      Object.assign(row, result.extracted, { status: 'ok' });
+    } else {
       row.status = 'error';
-      row.errorMsg = 'Extragere AI: ' + e.message;
+      row.errorMsg = result.errorMsg;
     }
     renderResultsTable(product);
   }
@@ -1112,10 +1161,14 @@ function renderResultsTable(product){
     if(d.strippedLen != null) lines.push(`Lungime după eliminare linii de navigare: ${d.strippedLen} caractere`);
     if(d.cleanedLen != null) lines.push(`Lungime finală trimisă la AI: ${d.cleanedLen} caractere`);
     if(d.modelUsed) lines.push(`Model AI care a răspuns: ${d.modelUsed}`);
-    if(!lines.length && !d.cleanedPreview && !d.aiRawResponse) return '';
+    if(d.blockedDetected) lines.push(`Detectat: pagina pare blocată (captcha/anti-bot) — semnal: "${d.blockedDetected}"`);
+    if(d.finishReason) lines.push(`Motiv finalizare (finish_reason): ${d.finishReason}`);
+    if(d.refusal) lines.push(`Refuz explicit al modelului: ${d.refusal}`);
+    if(!lines.length && !d.cleanedPreview && !d.aiRawResponse && !d.fullChoiceJson) return '';
     let content = lines.join('\n');
     if(d.cleanedPreview) content += `\n\n--- Primele 600 caractere trimise la AI ---\n${d.cleanedPreview}`;
     if(d.aiRawResponse) content += `\n\n--- Răspuns brut AI (înainte de parsare JSON) ---\n${d.aiRawResponse}`;
+    if(d.fullChoiceJson) content += `\n\n--- Răspuns JSON complet (content gol) ---\n${d.fullChoiceJson}`;
     return `<tr class="debug-row" id="debugrow-${escapeHtml(key)}" style="display:none;"><td colspan="7"><pre class="debug-pre">${escapeHtml(content)}</pre></td></tr>`;
   }
 
