@@ -631,21 +631,46 @@ async function callChatCompletion(endpoint, apiKey, model, messages, opts){
   return resp.json();
 }
 
+// Modele de rezervă per provider — nu apar în Setări, sunt încercate automat
+// dacă modelul configurat (sau cel implicit) eșuează (indisponibil, depreciat, supraîncărcat etc).
+const CEREBRAS_MODELS = ['llama-3.3-70b', 'llama-4-scout-17b-16e-instruct', 'qwen-3-32b', 'llama3.1-8b', 'gpt-oss-120b'];
+const GROQ_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'openai/gpt-oss-120b', 'qwen/qwen3-32b', 'llama-3.1-70b-versatile'];
+
+function orderedModels(preferred, list){
+  const rest = list.filter(m => m !== preferred);
+  return preferred ? [preferred, ...rest] : list;
+}
+
+async function callProviderWithModelFallback(endpoint, apiKey, models, messages, opts, errors, label){
+  for(const model of models){
+    try{
+      return await callChatCompletion(endpoint, apiKey, model, messages, opts);
+    }catch(e){
+      errors.push(`${label}/${model}: ${e.message}`);
+    }
+  }
+  return null;
+}
+
 async function callLLM(messages, opts){
   opts = opts || {};
   const cfg = state.data.config;
   if(!cfg.cerebrasKey && !cfg.groqKey){
     throw new Error('Lipsește cheia API Cerebras (și Groq) — setează cel puțin una din Setări API.');
   }
+  const errors = [];
   if(cfg.cerebrasKey){
-    try{
-      return await callChatCompletion('https://api.cerebras.ai/v1/chat/completions', cfg.cerebrasKey, cfg.cerebrasModel || 'llama-3.3-70b', messages, opts);
-    }catch(e){
-      console.warn('Apelul către Cerebras a eșuat.', e);
-      if(!cfg.groqKey) throw e;
-    }
+    const models = orderedModels(cfg.cerebrasModel, CEREBRAS_MODELS);
+    const result = await callProviderWithModelFallback('https://api.cerebras.ai/v1/chat/completions', cfg.cerebrasKey, models, messages, opts, errors, 'cerebras');
+    if(result) return result;
+    console.warn('Toate modelele Cerebras au eșuat.', errors);
   }
-  return callChatCompletion('https://api.groq.com/openai/v1/chat/completions', cfg.groqKey, cfg.groqModel || 'llama-3.3-70b-versatile', messages, opts);
+  if(cfg.groqKey){
+    const models = orderedModels(cfg.groqModel, GROQ_MODELS);
+    const result = await callProviderWithModelFallback('https://api.groq.com/openai/v1/chat/completions', cfg.groqKey, models, messages, opts, errors, 'groq');
+    if(result) return result;
+  }
+  throw new Error('Toate încercările (' + errors.length + ') au eșuat — ' + errors.slice(-4).join(' | '));
 }
 
 async function callSerper(query){
