@@ -159,6 +159,7 @@
   select#cerebrasModel{max-width:100%;}
   .link-cell{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;}
   .section-divider-row td{background:var(--panel-alt);color:var(--text-dim);font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;padding:6px 10px;}
+  .debug-pre{white-space:pre-wrap;word-break:break-word;background:var(--panel-alt);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:11.5px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;max-height:320px;overflow:auto;margin:0;color:var(--text-dim);}
   .price-cell{font-weight:700;}
   @media (max-width:860px){
     .layout{flex-direction:column;}
@@ -565,7 +566,7 @@ async function fetchViaProxy(url){
       if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const text = await resp.text();
       if(!text || text.length < 30) throw new Error('răspuns gol');
-      return text;
+      return { text, proxy: name };
     }catch(e){
       errors.push(`${name}: ${e.message}`);
     }
@@ -715,7 +716,7 @@ function parseJsonLoose(text){
   throw new Error('Nu s-a putut interpreta răspunsul JSON al modelului.');
 }
 
-async function extractPriceFromContent(productName, cleanedHtml){
+async function extractPriceFromContent(productName, cleanedHtml, debug){
   const systemPrompt = 'Ești un asistent care extrage informații despre prețul unui produs dintr-o pagină web curățată (HTML simplificat, fără JS/CSS). ' +
     'Răspunde STRICT cu un obiect JSON valid, fără text suplimentar înainte sau după, cu exact aceste câmpuri: ' +
     '{"nume_produs": string, "pret": number|null, "moneda": string, "disponibil": boolean, "incredere": "mare"|"medie"|"mica"}. ' +
@@ -723,11 +724,13 @@ async function extractPriceFromContent(productName, cleanedHtml){
     '"moneda" e codul monedei (RON, EUR, USD etc). "disponibil" e true dacă produsul pare în stoc. ' +
     '"incredere" reflectă cât de sigur ești de datele extrase. Nu adăuga explicații, doar obiectul JSON.';
   const userPrompt = `Produs căutat: "${productName}"\n\nConținut pagină web (curățat):\n${cleanedHtml}`;
+  if(debug) debug.promptLen = userPrompt.length;
   const data = await callLLM([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
   ], { maxTokens: 400 });
   const content = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : '';
+  if(debug){ debug.aiRawResponse = content; debug.modelUsed = data.model || '(necunoscut)'; }
   const parsed = parseJsonLoose(content);
   return {
     nume_produs: parsed.nume_produs || productName,
@@ -740,18 +743,25 @@ async function extractPriceFromContent(productName, cleanedHtml){
 
 /* ============ MANUAL MODE ============ */
 async function checkSiteRow(product, site){
-  let raw, cleaned;
+  const debug = {};
+  let cleaned;
   try{
-    raw = await fetchViaProxy(site.url);
-    cleaned = cleanHtml(stripNavLines(raw));
+    const fetched = await fetchViaProxy(site.url);
+    debug.proxy = fetched.proxy;
+    debug.rawLen = fetched.text.length;
+    const stripped = stripNavLines(fetched.text);
+    debug.strippedLen = stripped.length;
+    cleaned = cleanHtml(stripped);
+    debug.cleanedLen = cleaned.length;
+    debug.cleanedPreview = cleaned.slice(0, 600);
   }catch(e){
-    return { id: site.id, siteName: site.name, url: site.url, source: 'manual', status: 'error', errorMsg: 'Preluare pagină: ' + e.message };
+    return { id: site.id, siteName: site.name, url: site.url, source: 'manual', status: 'error', errorMsg: 'Preluare pagină: ' + e.message, debug };
   }
   try{
-    const extracted = await extractPriceFromContent(product.name, cleaned);
-    return Object.assign({ id: site.id, siteName: site.name, url: site.url, source: 'manual', status: 'ok' }, extracted);
+    const extracted = await extractPriceFromContent(product.name, cleaned, debug);
+    return Object.assign({ id: site.id, siteName: site.name, url: site.url, source: 'manual', status: 'ok', debug }, extracted);
   }catch(e){
-    return { id: site.id, siteName: site.name, url: site.url, source: 'manual', status: 'error', errorMsg: 'Extragere AI: ' + e.message };
+    return { id: site.id, siteName: site.name, url: site.url, source: 'manual', status: 'error', errorMsg: 'Extragere AI: ' + e.message, debug };
   }
 }
 
@@ -931,10 +941,18 @@ async function processChosenLinks(product, links){
   // secvențial (nu în paralel) — modelele AI au limită de tokens/minut, iar mai multe
   // extrageri simultane pe conținut mare de pagină o depășesc rapid (429 rate limit)
   for(const row of rows){
-    let raw, cleaned;
+    const debug = {};
+    row.debug = debug;
+    let cleaned;
     try{
-      raw = await fetchViaProxy(row.url);
-      cleaned = cleanHtml(stripNavLines(raw));
+      const fetched = await fetchViaProxy(row.url);
+      debug.proxy = fetched.proxy;
+      debug.rawLen = fetched.text.length;
+      const stripped = stripNavLines(fetched.text);
+      debug.strippedLen = stripped.length;
+      cleaned = cleanHtml(stripped);
+      debug.cleanedLen = cleaned.length;
+      debug.cleanedPreview = cleaned.slice(0, 600);
     }catch(e){
       row.status = 'error';
       row.errorMsg = 'Preluare pagină: ' + e.message;
@@ -942,7 +960,7 @@ async function processChosenLinks(product, links){
       continue;
     }
     try{
-      const extracted = await extractPriceFromContent(product.name, cleaned);
+      const extracted = await extractPriceFromContent(product.name, cleaned, debug);
       Object.assign(row, extracted, { status: 'ok' });
     }catch(e){
       row.status = 'error';
@@ -1029,9 +1047,30 @@ function renderResultsTable(product){
     }
   });
 
+  function debugToggleBtn(key, has){
+    if(!has) return '';
+    return `<button class="small ghost" data-debug-toggle="${escapeHtml(key)}" title="Diagnostic">🔍</button>`;
+  }
+
+  function renderDebugRow(r, key){
+    const d = r.debug || {};
+    const lines = [];
+    if(d.proxy) lines.push(`Proxy folosit: ${d.proxy}`);
+    if(d.rawLen != null) lines.push(`Lungime conținut brut preluat: ${d.rawLen} caractere`);
+    if(d.strippedLen != null) lines.push(`Lungime după eliminare linii de navigare: ${d.strippedLen} caractere`);
+    if(d.cleanedLen != null) lines.push(`Lungime finală trimisă la AI: ${d.cleanedLen} caractere`);
+    if(d.modelUsed) lines.push(`Model AI care a răspuns: ${d.modelUsed}`);
+    if(!lines.length && !d.cleanedPreview && !d.aiRawResponse) return '';
+    let content = lines.join('\n');
+    if(d.cleanedPreview) content += `\n\n--- Primele 600 caractere trimise la AI ---\n${d.cleanedPreview}`;
+    if(d.aiRawResponse) content += `\n\n--- Răspuns brut AI (înainte de parsare JSON) ---\n${d.aiRawResponse}`;
+    return `<tr class="debug-row" id="debugrow-${escapeHtml(key)}" style="display:none;"><td colspan="7"><pre class="debug-pre">${escapeHtml(content)}</pre></td></tr>`;
+  }
+
   function renderRow(r){
     const key = r.source + '-' + r.id;
     const isBest = key === minRowKey;
+    const hasDebug = !!(r.debug && Object.keys(r.debug).length);
     let inner = '';
     if(r.status === 'loading'){
       inner = `
@@ -1047,9 +1086,9 @@ function renderResultsTable(product){
         <td>${escapeHtml(r.siteName)}</td>
         <td colspan="4" class="muted">${escapeHtml(r.errorMsg || 'Eroare necunoscută')}</td>
         <td><span class="badge error">eroare</span></td>
-        <td>${badgeSource(r)}</td>
+        <td>${badgeSource(r)} ${debugToggleBtn(key, hasDebug)}</td>
       `;
-      return `<tr class="row-error">${inner}</tr>`;
+      return `<tr class="row-error">${inner}</tr>` + renderDebugRow(r, key);
     }
     const confClass = r.incredere === 'mare' ? 'conf-mare' : (r.incredere === 'medie' ? 'conf-medie' : 'conf-mica');
     const saveBtn = r.source === 'automat' && r.url ? `<button class="small" data-save="${escapeHtml(key)}">💾 Salvează în lista mea</button>` : '';
@@ -1064,9 +1103,10 @@ function renderResultsTable(product){
         ${badgeSource(r)}
         ${r.url ? `<a href="${safeAttr(r.url)}" target="_blank" rel="noopener noreferrer" class="link-cell" title="${safeAttr(r.url)}">🔗 sursă</a>` : ''}
         ${saveBtn}
+        ${debugToggleBtn(key, hasDebug)}
       </td>
     `;
-    return `<tr data-rowkey="${escapeHtml(key)}" class="${isBest ? 'best-price' : ''}">${inner}</tr>`;
+    return `<tr data-rowkey="${escapeHtml(key)}" class="${isBest ? 'best-price' : ''}">${inner}</tr>` + renderDebugRow(r, key);
   }
 
   let rowsHtml = manualRows.map(renderRow).join('');
@@ -1095,6 +1135,14 @@ function renderResultsTable(product){
       const key = btn.getAttribute('data-save');
       const row = autoRows.find(r => (r.source + '-' + r.id) === key);
       if(row) saveAutoResultToList(product.id, row.id);
+    });
+  });
+
+  wrap.querySelectorAll('[data-debug-toggle]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.getAttribute('data-debug-toggle');
+      const row = document.getElementById('debugrow-' + key);
+      if(row) row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
     });
   });
 }
