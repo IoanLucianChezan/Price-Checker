@@ -94,8 +94,11 @@
   .product-item.active{background:var(--primary-light);border-color:var(--primary);}
   .product-item .pname{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .product-item .psku{font-size:11.5px;color:var(--text-dim);}
-  .product-item .prow-actions{display:flex;gap:2px;opacity:0;transition:.15s;}
-  .product-item:hover .prow-actions{opacity:1;}
+  .product-item .prow-actions{display:flex;gap:2px;transition:.15s;}
+  @media (hover:hover){
+    .product-item .prow-actions{opacity:0;}
+    .product-item:hover .prow-actions{opacity:1;}
+  }
   .empty-state{color:var(--text-dim);font-size:13.5px;padding:14px 4px;text-align:center;}
   .card{
     background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
@@ -161,10 +164,70 @@
   .section-divider-row td{background:var(--panel-alt);color:var(--text-dim);font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;padding:6px 10px;}
   .debug-pre{white-space:pre-wrap;word-break:break-word;background:var(--panel-alt);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:11.5px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;max-height:320px;overflow:auto;margin:0;color:var(--text-dim);}
   .price-cell{font-weight:700;}
+
   @media (max-width:860px){
-    .layout{flex-direction:column;}
+    .layout{flex-direction:column;padding:12px;gap:12px;}
     .sidebar{width:100%;}
     .site-info .surl{max-width:220px;}
+  }
+
+  /* ============ Optimizări mobil ============ */
+  @media (max-width:640px){
+    :root{font-size:16px;}
+    .layout{padding:10px;gap:10px;}
+    .card{padding:14px;}
+    header.app-header{padding:10px 12px;}
+    .brand-badge{width:34px;height:34px;font-size:11px;}
+    .brand-text .appname{font-size:15px;}
+    .brand-text .company{font-size:10.5px;}
+
+    /* ținte de atingere mai mari pe telefon */
+    button{min-height:42px;padding:9px 14px;font-size:14.5px;}
+    button.small{min-height:38px;padding:7px 12px;font-size:13.5px;}
+    input,select,textarea{min-height:42px;font-size:16px;} /* 16px ca să nu facă zoom iOS la focus */
+
+    .card-header{gap:8px;}
+    .card-header .btn-row{width:100%;}
+    .card-header .btn-row button{flex:1 1 auto;min-width:0;}
+
+    .site-list li{flex-wrap:wrap;gap:10px;padding:12px 6px;}
+    .site-info{flex:1 1 100%;}
+    .site-info .surl{max-width:100%;}
+    .site-actions{flex-wrap:wrap;gap:8px;width:100%;justify-content:flex-start;}
+    .site-actions button{flex:0 0 auto;}
+
+    .product-item{padding:12px 10px;}
+    .product-item .prow-actions{gap:6px;}
+
+    /* tabel de rezultate/istoric → carduri pe ecran îngust */
+    table.results-table thead{display:none;}
+    table.results-table, table.results-table tbody, table.results-table tr, table.results-table td{display:block;width:100%;}
+    table.results-table{border-spacing:0;}
+    table.results-table tbody tr{margin-bottom:10px;}
+    table.results-table tbody tr:not(.section-divider-row):not(.debug-row){
+      border:1px solid var(--border);border-radius:10px;padding:6px 12px;background:var(--panel);
+    }
+    table.results-table tbody tr.best-price{border-color:var(--success);border-width:2px;}
+    table.results-table tbody tr.row-error{border-color:#f3c6c6;}
+    table.results-table td{
+      border-bottom:1px solid var(--panel-alt);padding:8px 2px;
+      display:flex;align-items:flex-start;justify-content:space-between;gap:10px;text-align:right;
+    }
+    table.results-table td:last-child{border-bottom:none;}
+    table.results-table td[data-label]::before{
+      content:attr(data-label);font-weight:700;font-size:11px;text-transform:uppercase;
+      color:var(--text-dim);text-align:left;flex-shrink:0;padding-top:1px;
+    }
+    table.results-table td:not([data-label]){text-align:left;border-bottom:none;}
+    table.results-table .section-divider-row td,
+    table.results-table .debug-row td{
+      display:block;text-align:left;padding:8px 4px;border-bottom:none;
+    }
+    table.results-table .site-actions,
+    table.results-table td > div{flex-wrap:wrap;justify-content:flex-end;}
+
+    .history-head{padding:10px 2px;font-size:13.5px;}
+    .history-entry{padding:2px 0;}
   }
 </style>
 </head>
@@ -1179,32 +1242,32 @@ function renderResultsTable(product){
     let inner = '';
     if(r.status === 'loading'){
       inner = `
-        <td>${escapeHtml(r.siteName)}</td>
+        <td data-label="Site">${escapeHtml(r.siteName)}</td>
         <td colspan="4"><span class="spinner"></span>Se verifică...</td>
-        <td><span class="badge loading">se încarcă</span></td>
-        <td>${badgeSource(r)}</td>
+        <td data-label="Status"><span class="badge loading">se încarcă</span></td>
+        <td data-label="Sursă">${badgeSource(r)}</td>
       `;
       return `<tr>${inner}</tr>`;
     }
     if(r.status === 'error'){
       inner = `
-        <td>${escapeHtml(r.siteName)}</td>
-        <td colspan="4" class="muted">${escapeHtml(r.errorMsg || 'Eroare necunoscută')}</td>
-        <td><span class="badge error">eroare</span></td>
-        <td>${badgeSource(r)} ${debugToggleBtn(key, hasDebug)}</td>
+        <td data-label="Site">${escapeHtml(r.siteName)}</td>
+        <td colspan="4" class="muted" data-label="Eroare">${escapeHtml(r.errorMsg || 'Eroare necunoscută')}</td>
+        <td data-label="Status"><span class="badge error">eroare</span></td>
+        <td data-label="Sursă">${badgeSource(r)} ${debugToggleBtn(key, hasDebug)}</td>
       `;
       return `<tr class="row-error">${inner}</tr>` + renderDebugRow(r, key);
     }
     const confClass = r.incredere === 'mare' ? 'conf-mare' : (r.incredere === 'medie' ? 'conf-medie' : 'conf-mica');
     const saveBtn = r.source === 'automat' && r.url ? `<button class="small" data-save="${escapeHtml(key)}">💾 Salvează în lista mea</button>` : '';
     inner = `
-      <td>${escapeHtml(r.siteName)}</td>
-      <td>${escapeHtml(r.nume_produs || '-')}</td>
-      <td class="price-cell">${r.pret != null ? escapeHtml(r.pret) : '-'}</td>
-      <td>${escapeHtml(r.moneda || '-')}</td>
-      <td>${r.disponibil ? '✅ Disponibil' : '❌ Indisponibil'}</td>
-      <td><span class="badge ${confClass}">${escapeHtml(r.incredere || 'mica')}</span></td>
-      <td>
+      <td data-label="Site">${escapeHtml(r.siteName)}</td>
+      <td data-label="Produs">${escapeHtml(r.nume_produs || '-')}</td>
+      <td class="price-cell" data-label="Preț">${r.pret != null ? escapeHtml(r.pret) : '-'}</td>
+      <td data-label="Monedă">${escapeHtml(r.moneda || '-')}</td>
+      <td data-label="Stoc">${r.disponibil ? '✅ Disponibil' : '❌ Indisponibil'}</td>
+      <td data-label="Încredere"><span class="badge ${confClass}">${escapeHtml(r.incredere || 'mica')}</span></td>
+      <td data-label="Sursă">
         ${badgeSource(r)}
         ${r.url ? `<a href="${safeAttr(r.url)}" target="_blank" rel="noopener noreferrer" class="link-cell" title="${safeAttr(r.url)}">🔗 sursă</a>` : ''}
         ${saveBtn}
@@ -1224,7 +1287,7 @@ function renderResultsTable(product){
 
   wrap.innerHTML = `
     <div style="overflow-x:auto;">
-    <table>
+    <table class="results-table">
       <thead>
         <tr>
           <th>Site</th><th>Nume produs găsit</th><th>Preț</th><th>Monedă</th><th>Disponibilitate</th><th>Status / Încredere</th><th>Sursă</th>
@@ -1298,10 +1361,10 @@ function renderHistory(product){
     const dateStr = new Date(h.date).toLocaleString('ro-RO');
     const rowsHtml = h.results.map(r => `
       <tr>
-        <td>${escapeHtml(r.siteName)}</td>
-        <td>${r.status === 'ok' ? escapeHtml(r.nume_produs || '-') : '-'}</td>
-        <td>${r.status === 'ok' && r.pret != null ? escapeHtml(r.pret) + ' ' + escapeHtml(r.moneda || '') : (r.status === 'error' ? 'eroare' : '-')}</td>
-        <td>${badgeSource(r)}</td>
+        <td data-label="Site">${escapeHtml(r.siteName)}</td>
+        <td data-label="Produs">${r.status === 'ok' ? escapeHtml(r.nume_produs || '-') : '-'}</td>
+        <td data-label="Preț">${r.status === 'ok' && r.pret != null ? escapeHtml(r.pret) + ' ' + escapeHtml(r.moneda || '') : (r.status === 'error' ? 'eroare' : '-')}</td>
+        <td data-label="Sursă">${badgeSource(r)}</td>
       </tr>
     `).join('');
     return `
@@ -1311,7 +1374,7 @@ function renderHistory(product){
           <span class="muted">${h.results.length} rezultate${min != null ? ' · minim ' + min : ''}</span>
         </div>
         <div class="history-body" id="histBody-${idx}">
-          <table><tbody>${rowsHtml}</tbody></table>
+          <table class="results-table"><tbody>${rowsHtml}</tbody></table>
         </div>
       </div>
     `;
