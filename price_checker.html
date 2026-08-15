@@ -491,6 +491,7 @@ function renderSiteList(product){
         <a class="surl" href="${safeAttr(s.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.url)}</a>
       </div>
       <div class="site-actions">
+        <button class="small" data-act="resolve" title="Găsește automat linkul exact de produs pe acest site (folosește Serper.dev)">🔎</button>
         <button class="small" data-act="refresh" title="Reverifică doar acest site">↻</button>
         <button class="small ghost" data-act="edit" title="Editează">✎</button>
         <button class="small danger" data-act="del" title="Șterge">🗑</button>
@@ -500,6 +501,7 @@ function renderSiteList(product){
 
   ul.querySelectorAll('li').forEach(li => {
     const siteId = li.getAttribute('data-id');
+    li.querySelector('[data-act="resolve"]').addEventListener('click', () => resolveSiteUrl(product.id, siteId));
     li.querySelector('[data-act="refresh"]').addEventListener('click', () => refreshSingleSite(product.id, siteId));
     li.querySelector('[data-act="edit"]').addEventListener('click', () => openSiteModal(product.id, siteId));
     li.querySelector('[data-act="del"]').addEventListener('click', () => deleteSite(product.id, siteId));
@@ -813,6 +815,56 @@ async function refreshSingleSite(productId, siteId){
   idx = arr.findIndex(r => r.id === siteId && r.source === 'manual');
   if(idx > -1) arr[idx] = row; else arr.push(row);
   renderResultsTable(product);
+  saveHistoryEntry(productId);
+}
+
+async function resolveSiteUrl(productId, siteId){
+  const product = getProduct(productId);
+  const site = product.sites.find(s => s.id === siteId);
+  if(!site) return;
+  if(!state.data.config.serperKey){ alert('Setează cheia API Serper.dev din Setări API pentru a găsi automat linkul.'); openSettingsModal(); return; }
+  if(!state.data.config.cerebrasKey && !state.data.config.groqKey){ alert('Setează cheia API Cerebras sau Groq din Setări API.'); openSettingsModal(); return; }
+
+  const domain = hostnameOf(site.url);
+  if(!domain){ alert('URL-ul site-ului nu e valid.'); return; }
+
+  if(!state.results[productId]) state.results[productId] = [];
+  const arr = state.results[productId];
+  const setRow = (row) => {
+    const idx = arr.findIndex(r => r.id === siteId && r.source === 'manual');
+    if(idx > -1) arr[idx] = row; else arr.push(row);
+    renderResultsTable(product);
+  };
+  setRow({ id: siteId, siteName: site.name, url: site.url, source: 'manual', status: 'loading' });
+
+  try{
+    const query = `site:${domain} ${product.name}`;
+    const serperData = await callSerper(query);
+    const organic = (serperData.organic || []).slice(0, 8).map(r => ({ titlu: r.title, link: r.link, fragment: r.snippet }));
+    if(!organic.length) throw new Error(`Nicio pagină găsită pe ${domain} pentru "${product.name}".`);
+
+    const listText = organic.map((r, i) => `${i+1}. ${r.titlu}\nURL: ${r.link}\nFragment: ${r.fragment || ''}`).join('\n\n');
+    const systemPrompt = 'Ești un asistent care alege, dintr-o listă de rezultate de căutare restricționate la un singur magazin online, link-ul care duce EXACT la pagina de produs (nu categorie, nu listă de rezultate, nu blog). ' +
+      'Răspunde STRICT cu JSON, fără alt text: {"url": string} — link-ul ales, copiat exact din listă.';
+    const userPrompt = `Produs căutat: "${product.name}"\n\nRezultate de pe ${domain}:\n${listText}`;
+    const data = await callLLM([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ], { maxTokens: 200 });
+    const content = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : '';
+    const parsed = parseJsonLoose(content);
+    if(!parsed.url || !isValidUrl(parsed.url)) throw new Error(`Modelul nu a găsit un link valid de produs pe ${domain}.`);
+
+    site.url = parsed.url;
+    saveData();
+    renderSiteList(product);
+  }catch(e){
+    setRow({ id: siteId, siteName: site.name, url: site.url, source: 'manual', status: 'error', errorMsg: 'Găsire link: ' + e.message });
+    return;
+  }
+
+  const row = await checkSiteRow(product, site);
+  setRow(row);
   saveHistoryEntry(productId);
 }
 
