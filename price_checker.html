@@ -153,12 +153,6 @@
   details.debug summary{cursor:pointer;font-size:12.5px;color:var(--text-dim);font-weight:600;}
   details.debug .query-tag{display:inline-block;background:var(--panel-alt);border:1px solid var(--border);border-radius:6px;padding:3px 8px;margin:4px 4px 0 0;font-size:12px;}
   .hint-banner{background:var(--warn-bg);color:var(--warn);border:1px solid #f0dba9;border-radius:8px;padding:10px 14px;font-size:13.5px;}
-  .history-entry{border-bottom:1px solid var(--border);padding:8px 0;}
-  .history-entry:last-child{border-bottom:none;}
-  .history-head{display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-size:13px;}
-  .history-head .hdate{font-weight:600;}
-  .history-body{display:none;margin-top:8px;}
-  .history-body.open{display:block;}
   select#cerebrasModel{max-width:100%;}
   .link-cell{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;}
   .section-divider-row td{background:var(--panel-alt);color:var(--text-dim);font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;padding:6px 10px;}
@@ -199,7 +193,7 @@
     .product-item{padding:12px 10px;}
     .product-item .prow-actions{gap:6px;}
 
-    /* tabel de rezultate/istoric → carduri pe ecran îngust */
+    /* tabel de rezultate → carduri pe ecran îngust */
     table.results-table thead{display:none;}
     table.results-table, table.results-table tbody, table.results-table tr, table.results-table td{display:block;width:100%;}
     table.results-table{border-spacing:0;}
@@ -225,9 +219,6 @@
     }
     table.results-table .site-actions,
     table.results-table td > div{flex-wrap:wrap;justify-content:flex-end;}
-
-    .history-head{padding:10px 2px;font-size:13.5px;}
-    .history-entry{padding:2px 0;}
   }
 </style>
 </head>
@@ -426,7 +417,7 @@ function openProductModal(productId){
       if(editing){
         editing.name = name; editing.sku = sku;
       } else {
-        const p = { id: uid(), name, sku, sites: [], history: [] };
+        const p = { id: uid(), name, sku, sites: [] };
         state.data.products.push(p);
         state.data.selectedProductId = p.id;
       }
@@ -441,7 +432,7 @@ function openProductModal(productId){
 function deleteProduct(id){
   const p = getProduct(id);
   if(!p) return;
-  if(!confirm(`Ștergi produsul „${p.name}” și toate site-urile/istoricul asociat?`)) return;
+  if(!confirm(`Ștergi produsul „${p.name}” și toate site-urile asociate?`)) return;
   state.data.products = state.data.products.filter(x => x.id !== id);
   if(state.data.selectedProductId === id) state.data.selectedProductId = null;
   delete state.results[id]; delete state.autoResults[id]; delete state.searchQueries[id];
@@ -522,11 +513,6 @@ function renderMain(){
         <div id="queryTags"></div>
       </details>
     </div>
-
-    <div class="card">
-      <div class="card-header"><h2 style="font-size:15px;">Istoric verificări</h2></div>
-      <div id="historyWrap"></div>
-    </div>
   `;
 
   document.getElementById('btnEditProduct').addEventListener('click', () => openProductModal(product.id));
@@ -537,7 +523,6 @@ function renderMain(){
   renderSiteList(product);
   renderResultsTable(product);
   renderSearchQueriesDebug(product);
-  renderHistory(product);
 }
 
 /* ============ SITES ============ */
@@ -893,7 +878,6 @@ async function runManualCheck(productId){
   state.results[productId] = product.sites.map(s => ({ id: s.id, siteName: s.name, url: s.url, source: 'manual', status: 'loading' }));
   renderResultsTable(product);
 
-  const runId = Date.now();
   product.sites.forEach(async (site) => {
     const row = await checkSiteRow(product, site);
     const arr = state.results[productId];
@@ -901,19 +885,7 @@ async function runManualCheck(productId){
     const idx = arr.findIndex(r => r.id === site.id && r.source === 'manual');
     if(idx > -1) arr[idx] = row; else arr.push(row);
     renderResultsTable(product);
-    maybeFinishRun(productId, runId);
   });
-}
-
-const pendingRuns = {};
-function maybeFinishRun(productId, runId){
-  const arr = state.results[productId] || [];
-  const stillLoading = arr.some(r => r.status === 'loading');
-  if(!stillLoading){
-    if(pendingRuns[productId] === runId) return;
-    pendingRuns[productId] = runId;
-    saveHistoryEntry(productId);
-  }
 }
 
 async function refreshSingleSite(productId, siteId){
@@ -932,7 +904,6 @@ async function refreshSingleSite(productId, siteId){
   idx = arr.findIndex(r => r.id === siteId && r.source === 'manual');
   if(idx > -1) arr[idx] = row; else arr.push(row);
   renderResultsTable(product);
-  saveHistoryEntry(productId);
 }
 
 // Domeniu "gol" (ex. https://altex.ro/ sau https://www.emag.ro) fără cale — user a dat
@@ -994,7 +965,6 @@ async function resolveSiteUrl(productId, siteId){
 
   const row = await checkSiteRow(product, site);
   setRow(row);
-  saveHistoryEntry(productId);
 }
 
 /* ============ AUTOMATIC MODE ============ */
@@ -1032,7 +1002,6 @@ async function runAutomaticSearch(productId){
       state.autoResults[productId] = fb.rows;
       renderResultsTable(product);
       renderSearchQueriesDebug(product);
-      saveHistoryEntry(productId);
       return;
     }
     state.searchQueries[productId] = queriesUsed;
@@ -1162,7 +1131,6 @@ async function processChosenLinks(product, links, pool){
     }
     renderResultsTable(product);
   }
-  saveHistoryEntry(product.id);
 }
 
 async function fallbackSearchFlow(product){
@@ -1362,62 +1330,6 @@ function renderSearchQueriesDebug(product){
   }
   details.style.display = 'block';
   tagsWrap.innerHTML = queries.map(q => `<span class="query-tag">${escapeHtml(q)}</span>`).join('');
-}
-
-/* ============ HISTORY ============ */
-function saveHistoryEntry(productId){
-  const product = getProduct(productId);
-  if(!product) return;
-  const manual = state.results[productId] || [];
-  const auto = state.autoResults[productId] || [];
-  const combined = [...manual, ...auto].filter(r => r.status !== 'loading');
-  if(!combined.length) return;
-  product.history = product.history || [];
-  product.history.unshift({ date: new Date().toISOString(), results: combined });
-  product.history = product.history.slice(0, 10);
-  saveData();
-  renderHistory(product);
-}
-
-function renderHistory(product){
-  const wrap = document.getElementById('historyWrap');
-  if(!wrap) return;
-  const history = product.history || [];
-  if(!history.length){
-    wrap.innerHTML = '<div class="empty-state" style="padding:8px 0;">Nicio verificare salvată în istoric încă.</div>';
-    return;
-  }
-  wrap.innerHTML = history.map((h, idx) => {
-    const okResults = h.results.filter(r => r.status === 'ok' && typeof r.pret === 'number');
-    const min = okResults.length ? Math.min(...okResults.map(r => r.pret)) : null;
-    const dateStr = new Date(h.date).toLocaleString('ro-RO');
-    const rowsHtml = h.results.map(r => `
-      <tr>
-        <td data-label="Site">${escapeHtml(r.siteName)}</td>
-        <td data-label="Produs">${r.status === 'ok' ? escapeHtml(r.nume_produs || '-') : '-'}</td>
-        <td data-label="Preț">${r.status === 'ok' && r.pret != null ? escapeHtml(r.pret) + ' ' + escapeHtml(r.moneda || '') : (r.status === 'error' ? 'eroare' : '-')}</td>
-        <td data-label="Sursă">${badgeSource(r)}</td>
-      </tr>
-    `).join('');
-    return `
-      <div class="history-entry">
-        <div class="history-head" data-idx="${idx}">
-          <span class="hdate">${dateStr}</span>
-          <span class="muted">${h.results.length} rezultate${min != null ? ' · minim ' + min : ''}</span>
-        </div>
-        <div class="history-body" id="histBody-${idx}">
-          <table class="results-table"><tbody>${rowsHtml}</tbody></table>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  wrap.querySelectorAll('.history-head').forEach(head => {
-    head.addEventListener('click', () => {
-      const idx = head.getAttribute('data-idx');
-      document.getElementById('histBody-' + idx).classList.toggle('open');
-    });
-  });
 }
 
 /* ============ INIT ============ */
