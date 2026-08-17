@@ -778,11 +778,31 @@ function parseJsonLoose(text){
   throw new Error('Nu s-a putut interpreta răspunsul JSON al modelului.');
 }
 
+// Plasă de siguranță deterministă: dacă AI-ul întoarce un întreg fără zecimale
+// (ex. 463) care coincide cifră-cu-cifră cu un tipar "X,YY lei" real din conținut
+// (ex. "4,63 lei" — virgula românească pierdută), corectează la 4.63. Nu se bazează
+// doar pe instrucțiunile din prompt, care modelele nu le urmează mereu perfect.
+function fixMisparsedPrice(pret, sourceText){
+  if(typeof pret !== 'number' || !Number.isInteger(pret) || !sourceText) return pret;
+  const digits = String(pret);
+  const re = /(\d{1,3}(?:\.\d{3})*|\d+),(\d{2})(?!\d)/g;
+  let m;
+  while((m = re.exec(sourceText))){
+    const wholePart = m[1].replace(/\./g, '');
+    if(wholePart + m[2] === digits){
+      return parseFloat(wholePart + '.' + m[2]);
+    }
+  }
+  return pret;
+}
+
 async function extractPriceFromContent(productName, cleanedHtml, debug){
   const systemPrompt = 'Ești un asistent care extrage informații despre prețul unui produs dintr-o pagină web curățată (HTML simplificat, fără JS/CSS). ' +
     'Răspunde STRICT cu un obiect JSON valid, fără text suplimentar înainte sau după, cu exact aceste câmpuri: ' +
     '{"nume_produs": string, "pret": number|null, "moneda": string, "disponibil": boolean, "incredere": "mare"|"medie"|"mica"}. ' +
-    'Reguli: "pret" e doar numărul (fără simbol monetar, fără separator de mii, punct zecimal); dacă nu găsești prețul, pune null. ' +
+    'Reguli: "pret" este un număr JSON standard, fără simbol monetar și fără separator de mii — folosește OBLIGATORIU punct "." ca separator zecimal, niciodată virgulă. ' +
+    'Prețurile românești scriu virgula ca separator zecimal: "4,63 lei" înseamnă patru lei și șaizeci și trei de bani, deci "pret": 4.63 (NU 463). "1.234,56 lei" înseamnă o mie două sute treizeci și patru cu cincizeci și șase, deci "pret": 1234.56. ' +
+    'Dacă nu găsești prețul, pune null. ' +
     '"moneda" e codul monedei (RON, EUR, USD etc). "disponibil" e true dacă produsul pare în stoc. ' +
     '"incredere" reflectă cât de sigur ești de datele extrase. Nu adăuga explicații, doar obiectul JSON.';
   const userPrompt = `Produs căutat: "${productName}"\n\nConținut pagină web (curățat):\n${cleanedHtml}`;
@@ -813,9 +833,17 @@ async function extractPriceFromContent(productName, cleanedHtml, debug){
     content = reasoning;
   }
   const parsed = parseJsonLoose(content);
+  let pretValue = (typeof parsed.pret === 'number') ? parsed.pret : (parsed.pret ? Number(parsed.pret) : null);
+  if(pretValue != null){
+    const fixed = fixMisparsedPrice(pretValue, cleanedHtml);
+    if(fixed !== pretValue){
+      if(debug) debug.priceCommaFixed = `${pretValue} → ${fixed}`;
+      pretValue = fixed;
+    }
+  }
   return {
     nume_produs: parsed.nume_produs || productName,
-    pret: (typeof parsed.pret === 'number') ? parsed.pret : (parsed.pret ? Number(parsed.pret) : null),
+    pret: pretValue,
     moneda: parsed.moneda || '',
     disponibil: !!parsed.disponibil,
     incredere: parsed.incredere || 'mica'
@@ -1160,6 +1188,7 @@ async function fallbackSearchFlow(product){
   const listText = allOrganic.slice(0, 12).map((r, i) => `${i+1}. ${r.title}\nURL: ${r.link}\nFragment: ${r.snippet || ''}`).join('\n\n');
   const systemPrompt = 'Ești un asistent care alege cele mai relevante rezultate de căutare pentru prețul unui produs și extrage prețul direct din fragmentele text disponibile (nu ai acces la paginile complete, doar la titlu/URL/fragment). ' +
     'Alege doar magazine online recunoscute din România, nu forumuri, bloguri, agregatoare sau marketplace-uri generice. ' +
+    'Pentru "pret": folosește OBLIGATORIU punct "." ca separator zecimal, niciodată virgulă — prețurile românești scriu virgula ca zecimal ("4,63 lei" înseamnă "pret": 4.63, NU 463). ' +
     'Răspunde STRICT cu JSON, fără alt text: {"rezultate": [{"url": string, "titlu": string, "nume_produs": string, "pret": number|null, "moneda": string, "disponibil": boolean, "incredere": "mare"|"medie"|"mica"}, ...]} cu între 2 și 4 intrări, alese din lista dată.';
   const userPrompt = `Produs căutat: "${product.name}"\n\nRezultate căutare:\n${listText}`;
 
@@ -1174,18 +1203,25 @@ async function fallbackSearchFlow(product){
   const results = Array.isArray(parsed.rezultate) ? parsed.rezultate.slice(0, 4) : [];
   if(!results.length) throw new Error('Modelul nu a ales niciun rezultat din căutare.');
 
-  const rows = results.map(r => ({
-    id: 'auto-fb-' + uid(),
-    siteName: r.titlu || (r.url ? hostnameOf(r.url) : 'necunoscut'),
-    url: r.url || '',
-    source: 'automat',
-    nume_produs: r.nume_produs || product.name,
-    pret: (typeof r.pret === 'number') ? r.pret : (r.pret ? Number(r.pret) : null),
-    moneda: r.moneda || '',
-    disponibil: !!r.disponibil,
-    incredere: r.incredere || 'mica',
-    status: 'ok'
-  }));
+  const rows = results.map(r => {
+    let pretValue = (typeof r.pret === 'number') ? r.pret : (r.pret ? Number(r.pret) : null);
+    if(pretValue != null){
+      const match = allOrganic.find(o => o.link === r.url);
+      if(match && match.snippet) pretValue = fixMisparsedPrice(pretValue, match.snippet);
+    }
+    return {
+      id: 'auto-fb-' + uid(),
+      siteName: r.titlu || (r.url ? hostnameOf(r.url) : 'necunoscut'),
+      url: r.url || '',
+      source: 'automat',
+      nume_produs: r.nume_produs || product.name,
+      pret: pretValue,
+      moneda: r.moneda || '',
+      disponibil: !!r.disponibil,
+      incredere: r.incredere || 'mica',
+      status: 'ok'
+    };
+  });
   return { rows, queries };
 }
 
@@ -1243,6 +1279,7 @@ function renderResultsTable(product){
     if(d.finishReason) lines.push(`Motiv finalizare (finish_reason): ${d.finishReason}`);
     if(d.refusal) lines.push(`Refuz explicit al modelului: ${d.refusal}`);
     if(d.reasoningFallbackUsed) lines.push(`Notă: "content" era gol, s-a recuperat răspunsul din câmpul "reasoning" al modelului.`);
+    if(d.priceCommaFixed) lines.push(`Corectat automat (virgulă zecimală pierdută de AI): ${d.priceCommaFixed}`);
     if(!lines.length && !d.cleanedPreview && !d.aiRawResponse && !d.fullChoiceJson) return '';
     let content = lines.join('\n');
     if(d.cleanedPreview) content += `\n\n--- Primele 600 caractere trimise la AI ---\n${d.cleanedPreview}`;
