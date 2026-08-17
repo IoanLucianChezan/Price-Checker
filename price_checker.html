@@ -500,6 +500,11 @@ function renderMain(){
     </div>
 
     <div class="card">
+      <div class="card-header"><h2 style="font-size:15px;">Rezumat căutare</h2></div>
+      <div id="summaryWrap"></div>
+    </div>
+
+    <div class="card">
       <div class="card-header">
         <h2 style="font-size:15px;">Verificare preț</h2>
         <div class="btn-row">
@@ -1240,8 +1245,52 @@ function saveAutoResultToList(productId, rowId){
   alert('Site adăugat în lista fixă a produsului.');
 }
 
+/* ============ REZUMAT CĂUTARE ============ */
+// Doar site + preț, fără URL — pentru toate site-urile din lista manuală a produsului
+// (nu și rezultatele automate, care nu sunt "site-uri date" de utilizator).
+function renderSummary(product){
+  const wrap = document.getElementById('summaryWrap');
+  if(!wrap) return;
+  if(!product.sites.length){
+    wrap.innerHTML = '<div class="empty-state" style="padding:8px 0;">Niciun site adăugat încă.</div>';
+    return;
+  }
+  const manualRows = state.results[product.id] || [];
+  const items = product.sites.map(site => {
+    const r = manualRows.find(x => x.id === site.id && x.source === 'manual');
+    let priceText = 'neverificat', pret = null;
+    if(r){
+      if(r.status === 'loading') priceText = 'se verifică...';
+      else if(r.status === 'error') priceText = 'eroare';
+      else if(r.status === 'ok'){
+        pret = r.pret;
+        priceText = r.pret != null ? `${escapeHtml(r.pret)} ${escapeHtml(r.moneda || '')}`.trim() : 'preț negăsit';
+      }
+    }
+    return { name: site.name, priceText, pret };
+  });
+  const minPrice = items.reduce((min, it) => (typeof it.pret === 'number' && it.pret < min) ? it.pret : min, Infinity);
+
+  wrap.innerHTML = `
+    <div style="overflow-x:auto;">
+    <table class="results-table">
+      <thead><tr><th>Site</th><th>Preț</th></tr></thead>
+      <tbody>
+        ${items.map(it => `
+          <tr class="${it.pret === minPrice && minPrice !== Infinity ? 'best-price' : ''}">
+            <td data-label="Site">${escapeHtml(it.name)}</td>
+            <td class="price-cell" data-label="Preț">${escapeHtml(it.priceText)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    </div>
+  `;
+}
+
 /* ============ RESULTS TABLE ============ */
 function renderResultsTable(product){
+  renderSummary(product);
   const wrap = document.getElementById('resultsWrap');
   if(!wrap) return;
   const manualRows = state.results[product.id] || [];
