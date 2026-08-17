@@ -787,12 +787,16 @@ async function extractPriceFromContent(productName, cleanedHtml, debug){
     '"incredere" reflectă cât de sigur ești de datele extrase. Nu adăuga explicații, doar obiectul JSON.';
   const userPrompt = `Produs căutat: "${productName}"\n\nConținut pagină web (curățat):\n${cleanedHtml}`;
   if(debug) debug.promptLen = userPrompt.length;
+  // maxTokens generos: modelele de tip "reasoning" (ex. gpt-oss-120b) consumă sute de
+  // tokeni pe gândire internă înainte de răspunsul propriu-zis — cu un buget prea mic,
+  // ajung la finish_reason:"length" ȘI content gol, chiar dacă au "gândit" corect prețul.
   const data = await callLLM([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
-  ], { maxTokens: 400 });
+  ], { maxTokens: 900 });
   const choice = data.choices && data.choices[0];
-  const content = choice && choice.message ? choice.message.content : '';
+  let content = choice && choice.message ? choice.message.content : '';
+  const reasoning = choice && choice.message ? choice.message.reasoning : '';
   if(debug){
     debug.aiRawResponse = content;
     debug.modelUsed = data.model || '(necunoscut)';
@@ -801,6 +805,12 @@ async function extractPriceFromContent(productName, cleanedHtml, debug){
       debug.refusal = choice && choice.message ? choice.message.refusal : undefined;
       debug.fullChoiceJson = JSON.stringify(choice || data).slice(0, 800);
     }
+  }
+  // fallback: unele modele de reasoning pun răspunsul (sau un JSON recuperabil) în
+  // câmpul "reasoning" în loc de "content" dacă au fost trunchiate la limită
+  if(!content && reasoning){
+    if(debug) debug.reasoningFallbackUsed = true;
+    content = reasoning;
   }
   const parsed = parseJsonLoose(content);
   return {
@@ -928,8 +938,10 @@ async function findProductUrlOnDomain(product, domain){
   const data = await callLLM([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
-  ], { maxTokens: 200 });
-  const content = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : '';
+  ], { maxTokens: 500 });
+  const choice = data.choices && data.choices[0];
+  let content = choice && choice.message ? choice.message.content : '';
+  if(!content && choice && choice.message && choice.message.reasoning) content = choice.message.reasoning;
   const parsed = parseJsonLoose(content);
   if(!parsed.url || !isValidUrl(parsed.url)) throw new Error(`Modelul nu a găsit un link valid de produs pe ${domain}.`);
   return parsed.url;
@@ -1041,7 +1053,7 @@ async function getChosenLinksToolCalling(product, queriesUsedOut, poolOut){
   const MAX_ROUNDS = 6;
 
   for(let round = 0; round < MAX_ROUNDS; round++){
-    const data = await callLLM(messages, { tools, toolChoice: 'auto', maxTokens: 600 });
+    const data = await callLLM(messages, { tools, toolChoice: 'auto', maxTokens: 1000 });
     const msg = data.choices && data.choices[0] && data.choices[0].message;
     if(!msg) throw new Error('Răspuns invalid de la Cerebras (tool calling).');
 
@@ -1075,7 +1087,8 @@ async function getChosenLinksToolCalling(product, queriesUsedOut, poolOut){
       continue;
     }
 
-    const parsed = parseJsonLoose(msg.content || '');
+    const finalContent = msg.content || msg.reasoning || '';
+    const parsed = parseJsonLoose(finalContent);
     const links = Array.isArray(parsed.linkuri_alese) ? parsed.linkuri_alese.filter(l => l && l.url) : [];
     if(!links.length) throw new Error('Modelul nu a ales niciun link.');
     return links.slice(0, 4);
@@ -1153,8 +1166,10 @@ async function fallbackSearchFlow(product){
   const data = await callLLM([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
-  ], { maxTokens: 800 });
-  const content = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : '';
+  ], { maxTokens: 1400 });
+  const choice = data.choices && data.choices[0];
+  let content = choice && choice.message ? choice.message.content : '';
+  if(!content && choice && choice.message && choice.message.reasoning) content = choice.message.reasoning;
   const parsed = parseJsonLoose(content);
   const results = Array.isArray(parsed.rezultate) ? parsed.rezultate.slice(0, 4) : [];
   if(!results.length) throw new Error('Modelul nu a ales niciun rezultat din căutare.');
@@ -1227,6 +1242,7 @@ function renderResultsTable(product){
     if(d.blockedDetected) lines.push(`Detectat: pagina pare blocată (captcha/anti-bot) — semnal: "${d.blockedDetected}"`);
     if(d.finishReason) lines.push(`Motiv finalizare (finish_reason): ${d.finishReason}`);
     if(d.refusal) lines.push(`Refuz explicit al modelului: ${d.refusal}`);
+    if(d.reasoningFallbackUsed) lines.push(`Notă: "content" era gol, s-a recuperat răspunsul din câmpul "reasoning" al modelului.`);
     if(!lines.length && !d.cleanedPreview && !d.aiRawResponse && !d.fullChoiceJson) return '';
     let content = lines.join('\n');
     if(d.cleanedPreview) content += `\n\n--- Primele 600 caractere trimise la AI ---\n${d.cleanedPreview}`;
