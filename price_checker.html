@@ -650,6 +650,15 @@ function stripNavLines(text){
   }).join('\n');
 }
 
+// Unele magazine afișează prețul cu zecimalele ca superscript (ex. "5⁴⁰ Lei" din
+// "<div>5<sup>40</sup> Lei</div>") — la conversia în text/markdown, tag-ul <sup> se
+// pierde și rămâne "5 40 Lei" (fără punct/virgulă), complet ambiguu pentru AI, care
+// poate confunda cel de-al doilea număr cu altceva (cantitate, cod produs etc).
+// Se normalizează înapoi la "5.40 Lei" înainte de trimitere la AI.
+function normalizeSplitDecimalPrices(text){
+  return text.replace(/\b(\d{1,3}(?:[.,]\d{3})*)[ \t]{1,3}\n{0,2}[ \t]{0,3}(\d{2})[ \t]{0,3}\n{0,2}[ \t]{0,3}(Lei|RON)\b/gi, '$1.$2 $3');
+}
+
 // Semnale text specifice paginilor de blocare/captcha (Akamai, Cloudflare, AWS WAF etc).
 // Termeni deliberat specifici (nu "blocked" simplu) ca să nu prindă descrieri de produs normale.
 const BLOCK_SIGNATURES = [
@@ -872,7 +881,9 @@ async function fetchAndExtract(product, url, debug){
     debug.rawLen = fetched.text.length;
     const stripped = stripNavLines(fetched.text);
     debug.strippedLen = stripped.length;
-    cleaned = cleanHtml(stripped);
+    const normalized = normalizeSplitDecimalPrices(stripped);
+    if(normalized !== stripped) debug.splitDecimalPricesFixed = true;
+    cleaned = cleanHtml(normalized);
     debug.cleanedLen = cleaned.length;
     debug.cleanedPreview = cleaned.slice(0, 600);
   }catch(e){
@@ -1333,6 +1344,7 @@ function renderResultsTable(product){
     if(d.refusal) lines.push(`Refuz explicit al modelului: ${d.refusal}`);
     if(d.reasoningFallbackUsed) lines.push(`Notă: "content" era gol, s-a recuperat răspunsul din câmpul "reasoning" al modelului.`);
     if(d.priceCommaFixed) lines.push(`Corectat automat (virgulă zecimală pierdută de AI): ${d.priceCommaFixed}`);
+    if(d.splitDecimalPricesFixed) lines.push(`Normalizat: prețuri cu zecimale afișate ca superscript (ex. "5 40 Lei" → "5.40 Lei") înainte de trimitere la AI.`);
     if(!lines.length && !d.cleanedPreview && !d.aiRawResponse && !d.fullChoiceJson) return '';
     let content = lines.join('\n');
     if(d.cleanedPreview) content += `\n\n--- Primele 600 caractere trimise la AI ---\n${d.cleanedPreview}`;
