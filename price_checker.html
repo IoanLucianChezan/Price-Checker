@@ -1279,7 +1279,7 @@ function renderSummary(product){
     let priceText = 'neverificat', pret = null;
     if(r){
       if(r.status === 'loading') priceText = 'se verifică...';
-      else if(r.status === 'error') priceText = 'eroare';
+      else if(r.status === 'error') priceText = (r.debug && r.debug.blockedDetected) ? 'protecție anti-bot' : 'eroare';
       else if(r.status === 'ok'){
         pret = r.pret;
         priceText = r.pret != null ? `${escapeHtml(r.pret)} ${escapeHtml(r.moneda || '')}`.trim() : 'preț negăsit';
@@ -1368,10 +1368,11 @@ function renderResultsTable(product){
       return `<tr>${inner}</tr>`;
     }
     if(r.status === 'error'){
+      const errorLabel = (r.debug && r.debug.blockedDetected) ? 'protecție anti-bot' : 'eroare';
       inner = `
         <td data-label="Site">${escapeHtml(r.siteName)}</td>
         <td colspan="4" class="muted" data-label="Eroare">${escapeHtml(r.errorMsg || 'Eroare necunoscută')}</td>
-        <td data-label="Status"><span class="badge error">eroare</span></td>
+        <td data-label="Status"><span class="badge error">${escapeHtml(errorLabel)}</span></td>
         <td data-label="Sursă">${badgeSource(r)} ${debugToggleBtn(key, hasDebug)}</td>
       `;
       return `<tr class="row-error">${inner}</tr>` + renderDebugRow(r, key);
