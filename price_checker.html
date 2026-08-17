@@ -696,14 +696,33 @@ function cleanHtml(rawHtml){
   });
 
   let html = root.innerHTML.replace(/\s{2,}/g, ' ').trim();
-  const MAX = 15000;
-  if(html.length > MAX){
-    let truncated = html.slice(0, MAX);
+  return smartTruncate(html, 15000);
+}
+
+// Trunchiere "inteligentă": pe pagini cu mult conținut înainte de produsul propriu-zis
+// (produse similare, categorii, banner cookie-uri etc), primele 15.000 caractere pot
+// să nu conțină deloc prețul — confirmat pe 2 site-uri reale unde prețul apărea la
+// 17-25k caractere. În loc să păstreze orbește începutul, caută primul tipar de preț
+// (cifre + Lei/RON/EUR/USD/€/$) și păstrează o fereastră în jurul lui, plus începutul
+// (titlu/context). Fără niciun tipar de preț găsit, se comportă ca înainte.
+function smartTruncate(text, maxLen){
+  if(text.length <= maxLen) return text;
+  const priceMatch = text.match(/\d[\d.,]{0,9}\s*(Lei|RON|EUR|USD|€|\$)\b/i);
+  if(!priceMatch){
+    let truncated = text.slice(0, maxLen);
     const lastClose = truncated.lastIndexOf('>');
     if(lastClose > -1) truncated = truncated.slice(0, lastClose + 1);
-    html = truncated;
+    return truncated;
   }
-  return html;
+  const headLen = Math.min(2500, Math.floor(maxLen * 0.2));
+  const head = text.slice(0, headLen);
+  const marker = '\n\n[...conținut omis...]\n\n';
+  const remaining = maxLen - headLen - marker.length;
+  const priceIdx = priceMatch.index;
+  let windowStart = Math.max(headLen, priceIdx - Math.floor(remaining * 0.15));
+  let windowEnd = Math.min(text.length, windowStart + remaining);
+  if(windowEnd - windowStart < remaining) windowStart = Math.max(headLen, windowEnd - remaining);
+  return head + marker + text.slice(windowStart, windowEnd);
 }
 
 /* ============ CEREBRAS / SERPER API ============ */
