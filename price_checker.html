@@ -158,6 +158,13 @@
   .section-divider-row td{background:var(--panel-alt);color:var(--text-dim);font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;padding:6px 10px;}
   .debug-pre{white-space:pre-wrap;word-break:break-word;background:var(--panel-alt);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:11.5px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;max-height:320px;overflow:auto;margin:0;color:var(--text-dim);}
   .price-cell{font-weight:700;}
+  .summary-table{width:100%;border-collapse:collapse;font-size:13.5px;table-layout:fixed;}
+  .summary-table tr{border-bottom:1px solid var(--border);}
+  .summary-table tr:last-child{border-bottom:none;}
+  .summary-table tr.best-price{background:var(--success-bg);}
+  .summary-table td{padding:8px 4px;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .summary-site{text-align:left;}
+  .summary-price{text-align:right;width:40%;}
 
   @media (max-width:860px){
     .layout{flex-direction:column;padding:12px;gap:12px;}
@@ -1272,19 +1279,16 @@ function renderSummary(product){
   const minPrice = items.reduce((min, it) => (typeof it.pret === 'number' && it.pret < min) ? it.pret : min, Infinity);
 
   wrap.innerHTML = `
-    <div style="overflow-x:auto;">
-    <table class="results-table">
-      <thead><tr><th>Site</th><th>Preț</th></tr></thead>
+    <table class="summary-table">
       <tbody>
         ${items.map(it => `
           <tr class="${it.pret === minPrice && minPrice !== Infinity ? 'best-price' : ''}">
-            <td data-label="Site">${escapeHtml(it.name)}</td>
-            <td class="price-cell" data-label="Preț">${escapeHtml(it.priceText)}</td>
+            <td class="summary-site">${escapeHtml(it.name)}</td>
+            <td class="price-cell summary-price">${escapeHtml(it.priceText)}</td>
           </tr>
         `).join('')}
       </tbody>
     </table>
-    </div>
   `;
 }
 
